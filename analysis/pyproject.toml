@@ -1,0 +1,25 @@
+[project]
+name = "markov-stock-analyzer"
+version = "0.1.0"
+description = "Markov chain based stock trend analysis engine"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+    "pandas",
+    "numpy",
+    "yfinance",
+    "exchange-calendars"
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "httpx"
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
