@@ -190,6 +190,8 @@ def fetch_prices(
 
 def _analysis_error(error: ValueError) -> APIError:
     code = str(error)
+    if code == "STATE_COUNT_LIMIT_EXCEEDED":
+        return APIError(code, "State count exceeds the supported limit", 422)
     if code == "ENGINE_VERSION_UNSUPPORTED":
         return APIError(code, "Engine version is not supported", 409)
     if code in {"DATASET_HASH_MISMATCH", "DATASET_CONDITION_MISMATCH"}:
@@ -252,6 +254,8 @@ def analyze(payload: AnalyzeInput) -> CalculatedAnalysis:
 
 def _backtest_error(error: ValueError) -> APIError:
     code = str(error)
+    if code == "STATE_COUNT_LIMIT_EXCEEDED":
+        return APIError(code, "State count exceeds the supported limit", 422)
     if code == "INSUFFICIENT_TRAINING_STATES":
         return APIError(
             "INSUFFICIENT_TRAINING_DATA",

@@ -9,6 +9,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import Request
 
 from app.api.security import APIError, InternalAPIError, load_internal_api_token
+from app.api.limits import MAX_JSON_BYTES, REQUEST_BODY_TOO_LARGE
 from app.api.routes import router
 from app.providers.base import MarketDataProvider
 from app.providers.yfinance_provider import YFinanceProvider
@@ -56,6 +57,35 @@ def create_app(
         request.state.request_id = _request_id(
             request.headers.get("X-Request-Id")
         )
+        if request.method == "POST":
+            content_length = request.headers.get("content-length")
+            try:
+                declared_length = (
+                    int(content_length) if content_length is not None else None
+                )
+            except ValueError:
+                declared_length = None
+            if declared_length is not None and declared_length > MAX_JSON_BYTES:
+                return _error_response(
+                    request,
+                    413,
+                    REQUEST_BODY_TOO_LARGE,
+                    "Request body is too large",
+                    {"limit": MAX_JSON_BYTES},
+                )
+
+            body = bytearray()
+            async for chunk in request.stream():
+                body.extend(chunk)
+                if len(body) > MAX_JSON_BYTES:
+                    return _error_response(
+                        request,
+                        413,
+                        REQUEST_BODY_TOO_LARGE,
+                        "Request body is too large",
+                        {"limit": MAX_JSON_BYTES},
+                    )
+            request._body = bytes(body)
         response = await call_next(request)
         response.headers["X-Request-Id"] = request.state.request_id
         return response

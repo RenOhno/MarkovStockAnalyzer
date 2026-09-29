@@ -6,6 +6,7 @@ from importlib.metadata import version
 import numpy as np
 
 from app.core.state_classifier import STATE_ORDER
+from app.api.limits import validate_state_count
 from app.data.calendar import previous_session, sessions
 from app.data.payload import (
     ADJUSTMENT_POLICY,
@@ -126,6 +127,7 @@ def build_analysis_response(
     result,
     input_content_sha256: str,
 ) -> CalculatedAnalysis:
+    validate_state_count(result.sample_count)
     _validate_analysis_invariants(result)
     forecasts = [
         ForecastPayload(

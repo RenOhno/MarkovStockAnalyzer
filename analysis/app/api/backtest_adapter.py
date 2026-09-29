@@ -8,6 +8,7 @@ from app.api.analysis_adapter import (
     validate_condition_dataset,
     validate_preprocessed_dataset,
 )
+from app.api.limits import validate_state_count
 from app.core.returns import calculate_returns
 from app.core.state_classifier import classify_returns
 from app.core.backtest import BacktestResult
@@ -68,6 +69,7 @@ def prepare_backtest_dataset(
         lower=str(condition.lowerThreshold),
         upper=str(condition.upperThreshold),
     )
+    validate_state_count(len(states))
     state_dates = [price.date for price in selected_prices[1:]]
     return dataset, states.tolist(), state_dates
 

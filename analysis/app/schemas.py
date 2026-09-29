@@ -13,6 +13,8 @@ from pydantic import (
     model_validator,
 )
 
+from app.api.limits import validate_calendar_range
+
 
 ENGINE_VERSION = "msa-core-v1"
 
@@ -56,6 +58,7 @@ class FetchPricesRequest(StrictBaseModel):
     def validate_date_range(self):
         if self.startDate > self.endDate:
             raise ValueError("startDate must be on or before endDate")
+        validate_calendar_range(self.startDate, self.endDate)
         return self
 
 
@@ -126,6 +129,7 @@ class AnalysisCondition(StrictBaseModel):
     def validate_condition(self):
         if self.startDate > self.endDate:
             raise ValueError("startDate must be on or before endDate")
+        validate_calendar_range(self.startDate, self.endDate)
         for threshold in (self.lowerThreshold, self.upperThreshold):
             if not threshold.is_finite():
                 raise ValueError("threshold must be finite")

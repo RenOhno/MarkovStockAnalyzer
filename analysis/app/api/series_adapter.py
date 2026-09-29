@@ -6,6 +6,7 @@ from app.api.analysis_adapter import (
     validate_condition_dataset,
     validate_preprocessed_dataset,
 )
+from app.api.limits import validate_state_count
 from app.core.returns import calculate_returns
 from app.core.state_classifier import STATE_ORDER, classify_returns
 from app.data.payload import PRICE_BASIS
@@ -27,6 +28,7 @@ def build_series_response(
     validate_condition_dataset(condition, dataset)
     dataset = validate_preprocessed_dataset(dataset)
     points = _build_points(condition, dataset)
+    validate_state_count(len(points))
     _validate_points(points, condition)
     return CalculatedSeries(
         priceBasis=PRICE_BASIS,
