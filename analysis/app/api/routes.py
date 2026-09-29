@@ -46,6 +46,7 @@ from app.schemas import (
     PriceDatasetMetadata,
     PriceDatasetPayload,
     PricePointPayload,
+    ErrorResponse,
     SeriesInput,
 )
 
@@ -53,6 +54,16 @@ from app.schemas import (
 router = APIRouter(
     prefix="/internal/v1",
     dependencies=[Depends(require_internal_token)],
+    responses={
+        400: {"model": ErrorResponse},
+        401: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+        422: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+        502: {"model": ErrorResponse},
+        504: {"model": ErrorResponse},
+    },
 )
 
 
