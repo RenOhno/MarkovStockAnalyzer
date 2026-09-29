@@ -14,6 +14,7 @@ from app.api.backtest_adapter import (
     evaluation_dates,
     prepare_backtest_dataset,
 )
+from app.api.series_adapter import build_series_response
 from app.api.security import APIError, require_internal_token
 from app.data.calendar import previous_session
 from app.data.payload import (
@@ -38,12 +39,14 @@ from app.schemas import (
     BacktestInput,
     CalculatedBacktest,
     CalculatedAnalysis,
+    CalculatedSeries,
     ENGINE_VERSION,
     FetchPricesRequest,
     HealthResponse,
     PriceDatasetMetadata,
     PriceDatasetPayload,
     PricePointPayload,
+    SeriesInput,
 )
 
 
@@ -319,6 +322,32 @@ def backtest(payload: BacktestInput) -> CalculatedBacktest:
         )
     except ValueError as error:
         raise _backtest_error(error) from error
+    except Exception as error:
+        raise APIError(
+            "CALCULATION_INVARIANT_FAILED",
+            "Calculation failed",
+            500,
+        ) from error
+
+
+@router.post(
+    "/series",
+    response_model=CalculatedSeries,
+)
+def series(payload: SeriesInput) -> CalculatedSeries:
+    if (
+        payload.engineVersion != ENGINE_VERSION
+        or payload.requiredEngineVersion != ENGINE_VERSION
+    ):
+        raise APIError(
+            "ENGINE_VERSION_UNSUPPORTED",
+            "Engine version is not supported",
+            409,
+        )
+    try:
+        return build_series_response(payload.condition, payload.dataset)
+    except ValueError as error:
+        raise _analysis_error(error) from error
     except Exception as error:
         raise APIError(
             "CALCULATION_INVARIANT_FAILED",

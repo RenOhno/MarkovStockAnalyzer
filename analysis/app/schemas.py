@@ -7,6 +7,7 @@ from pydantic import (
     BeforeValidator,
     ConfigDict,
     Field,
+    StrictFloat,
     StrictInt,
     StrictStr,
     model_validator,
@@ -179,6 +180,10 @@ class BacktestInput(StrictBaseModel):
     evaluation: BacktestEvaluation
 
 
+class SeriesInput(AnalyzeInput):
+    requiredEngineVersion: StrictStr = Field(min_length=1, max_length=64)
+
+
 class ForecastPayload(StrictBaseModel):
     horizon: Literal[1, 3, 5, 10]
     probabilities: list[float]
@@ -233,6 +238,20 @@ class CalculatedBacktest(StrictBaseModel):
     predictions: list[BacktestPredictionPayload]
     engineVersion: StrictStr
     runtime: dict[str, object]
+
+
+class SeriesPointPayload(StrictBaseModel):
+    date: date
+    close: StrictStr
+    adjustedClose: StrictStr
+    returnValue: StrictFloat
+    state: Literal["UP", "FLAT", "DOWN"]
+
+
+class CalculatedSeries(StrictBaseModel):
+    priceBasis: Literal["PROVIDER_ADJUSTED_CLOSE"]
+    points: list[SeriesPointPayload]
+    engineVersion: StrictStr
 
 
 class CalculatedAnalysis(StrictBaseModel):
