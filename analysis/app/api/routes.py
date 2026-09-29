@@ -1,4 +1,6 @@
 from datetime import datetime, timezone
+from concurrent.futures import TimeoutError as FutureTimeoutError
+from collections.abc import Generator
 
 from fastapi import APIRouter, Depends, Request
 
@@ -16,6 +18,7 @@ from app.api.backtest_adapter import (
 )
 from app.api.series_adapter import build_series_response
 from app.api.security import APIError, require_internal_token
+from app.api.limits import ExecutionLease
 from app.data.calendar import previous_session
 from app.data.payload import (
     ADJUSTMENT_POLICY,
@@ -67,6 +70,21 @@ router = APIRouter(
 )
 
 
+def require_execution_slot(request: Request) -> Generator[ExecutionLease, None, None]:
+    gate = request.app.state.execution_gate
+    if not gate.acquire():
+        raise APIError(
+            "TOO_MANY_ANALYSES",
+            "Another calculation is already running",
+            429,
+        )
+    lease = ExecutionLease(gate)
+    try:
+        yield lease
+    finally:
+        lease.release()
+
+
 @router.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     return HealthResponse(
@@ -113,16 +131,23 @@ def _preprocess_error(error: ValueError) -> APIError:
 )
 def fetch_prices(
     payload: FetchPricesRequest,
+    request: Request,
     provider: MarketDataProvider = Depends(get_market_data_provider),
+    execution_lease: ExecutionLease = Depends(require_execution_slot),
 ) -> PriceDatasetPayload:
     fetch_start = previous_session(payload.startDate)
+    provider_future = request.app.state.provider_executor.submit(
+        provider.fetch,
+        ticker=payload.ticker,
+        start_date=fetch_start,
+        end_date=payload.endDate,
+    )
     try:
-        dataset = provider.fetch(
-            ticker=payload.ticker,
-            start_date=fetch_start,
-            end_date=payload.endDate,
+        dataset = provider_future.result(
+            timeout=request.app.state.fetch_deadline_seconds,
         )
-    except TimeoutError as error:
+    except FutureTimeoutError as error:
+        execution_lease.retain_until(provider_future)
         raise APIError(
             "PROVIDER_TIMEOUT",
             "Price provider timed out",
@@ -219,7 +244,10 @@ def _analysis_error(error: ValueError) -> APIError:
     "/analyze",
     response_model=CalculatedAnalysis,
 )
-def analyze(payload: AnalyzeInput) -> CalculatedAnalysis:
+def analyze(
+    payload: AnalyzeInput,
+    execution_lease: ExecutionLease = Depends(require_execution_slot),
+) -> CalculatedAnalysis:
     if payload.engineVersion != ENGINE_VERSION:
         raise APIError(
             "ENGINE_VERSION_UNSUPPORTED",
@@ -289,7 +317,10 @@ def _backtest_error(error: ValueError) -> APIError:
     "/backtest",
     response_model=CalculatedBacktest,
 )
-def backtest(payload: BacktestInput) -> CalculatedBacktest:
+def backtest(
+    payload: BacktestInput,
+    execution_lease: ExecutionLease = Depends(require_execution_slot),
+) -> CalculatedBacktest:
     if payload.engineVersion != ENGINE_VERSION:
         raise APIError(
             "ENGINE_VERSION_UNSUPPORTED",
@@ -349,7 +380,10 @@ def backtest(payload: BacktestInput) -> CalculatedBacktest:
     "/series",
     response_model=CalculatedSeries,
 )
-def series(payload: SeriesInput) -> CalculatedSeries:
+def series(
+    payload: SeriesInput,
+    execution_lease: ExecutionLease = Depends(require_execution_slot),
+) -> CalculatedSeries:
     if (
         payload.engineVersion != ENGINE_VERSION
         or payload.requiredEngineVersion != ENGINE_VERSION

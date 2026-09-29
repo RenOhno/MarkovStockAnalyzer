@@ -1,4 +1,6 @@
 import re
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 from uuid import uuid4
 from collections.abc import Callable
 
@@ -9,7 +11,12 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import Request
 
 from app.api.security import APIError, InternalAPIError, load_internal_api_token
-from app.api.limits import MAX_JSON_BYTES, REQUEST_BODY_TOO_LARGE
+from app.api.limits import (
+    DEFAULT_PROVIDER_DEADLINE_SECONDS,
+    ExecutionGate,
+    MAX_JSON_BYTES,
+    REQUEST_BODY_TOO_LARGE,
+)
 from app.api.routes import router
 from app.providers.base import MarketDataProvider
 from app.providers.yfinance_provider import YFinanceProvider
@@ -47,10 +54,27 @@ def _error_response(
 
 def create_app(
     provider_factory: Callable[[], MarketDataProvider] = YFinanceProvider,
+    fetch_deadline_seconds: float = DEFAULT_PROVIDER_DEADLINE_SECONDS,
 ) -> FastAPI:
-    app = FastAPI(title="Markov Stock Analyzer")
+    @asynccontextmanager
+    async def lifespan(application: FastAPI):
+        try:
+            yield
+        finally:
+            application.state.provider_executor.shutdown(
+                wait=True,
+                cancel_futures=True,
+            )
+
+    app = FastAPI(title="Markov Stock Analyzer", lifespan=lifespan)
     app.state.internal_api_token = load_internal_api_token()
     app.state.provider_factory = provider_factory
+    app.state.execution_gate = ExecutionGate()
+    app.state.provider_executor = ThreadPoolExecutor(
+        max_workers=1,
+        thread_name_prefix="provider-worker",
+    )
+    app.state.fetch_deadline_seconds = fetch_deadline_seconds
 
     @app.middleware("http")
     async def request_id_middleware(request: Request, call_next):
