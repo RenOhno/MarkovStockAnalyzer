@@ -2,6 +2,12 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Request
 
+from app.api.analysis_adapter import (
+    build_analysis_response,
+    dataset_from_payload,
+    validate_condition_dataset,
+    validate_preprocessed_dataset,
+)
 from app.api.security import APIError, require_internal_token
 from app.data.calendar import previous_session
 from app.data.payload import (
@@ -18,7 +24,10 @@ from app.data.payload import (
 )
 from app.data.preprocess import preprocess_price_dataset
 from app.providers.base import MarketDataProvider
+from app.services.analysis_service import AnalysisService
 from app.schemas import (
+    AnalyzeInput,
+    CalculatedAnalysis,
     ENGINE_VERSION,
     FetchPricesRequest,
     HealthResponse,
@@ -153,3 +162,65 @@ def fetch_prices(
         metadata=PriceDatasetMetadata(**metadata_value),
         prices=prices,
     )
+
+
+def _analysis_error(error: ValueError) -> APIError:
+    code = str(error)
+    if code == "ENGINE_VERSION_UNSUPPORTED":
+        return APIError(code, "Engine version is not supported", 409)
+    if code in {"DATASET_HASH_MISMATCH", "DATASET_CONDITION_MISMATCH"}:
+        return APIError(
+            code,
+            "Dataset does not match the analysis condition",
+            409,
+        )
+    if code == "INSUFFICIENT_STATES":
+        return APIError(
+            code,
+            "Analysis requires at least 30 states",
+            422,
+        )
+    if code in {"DATA_GAP", "INVALID_PRICE_DATA", "INVALID_DATASET"}:
+        return APIError(code, "Dataset is invalid", 422)
+    if code in {"INVALID_CONDITION", "INVALID_ANALYSIS_RANGE"}:
+        return APIError(code, "Analysis condition is invalid", 422)
+    if code == "CALCULATION_INVARIANT_FAILED":
+        return APIError(code, "Calculation invariant failed", 500)
+    return APIError("CALCULATION_INVARIANT_FAILED", "Calculation failed", 500)
+
+
+@router.post(
+    "/analyze",
+    response_model=CalculatedAnalysis,
+)
+def analyze(payload: AnalyzeInput) -> CalculatedAnalysis:
+    if payload.engineVersion != ENGINE_VERSION:
+        raise APIError(
+            "ENGINE_VERSION_UNSUPPORTED",
+            "Engine version is not supported",
+            409,
+        )
+
+    try:
+        dataset = dataset_from_payload(payload.dataset)
+        validate_condition_dataset(payload.condition, dataset)
+        dataset = validate_preprocessed_dataset(dataset)
+        result = AnalysisService().analyze(
+            dataset,
+            payload.condition.startDate,
+            payload.condition.endDate,
+            str(payload.condition.lowerThreshold),
+            str(payload.condition.upperThreshold),
+        )
+        return build_analysis_response(
+            result,
+            payload.dataset.contentSha256,
+        )
+    except ValueError as error:
+        raise _analysis_error(error) from error
+    except Exception as error:
+        raise APIError(
+            "CALCULATION_INVARIANT_FAILED",
+            "Calculation failed",
+            500,
+        ) from error
