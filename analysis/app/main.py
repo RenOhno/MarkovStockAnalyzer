@@ -1,13 +1,17 @@
 import re
 from uuid import uuid4
+from collections.abc import Callable
 
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import Request
 
-from app.api.security import InternalAPIError, load_internal_api_token
+from app.api.security import APIError, InternalAPIError, load_internal_api_token
 from app.api.routes import router
+from app.providers.base import MarketDataProvider
+from app.providers.yfinance_provider import YFinanceProvider
 from app.schemas import ErrorResponse
 
 
@@ -40,9 +44,12 @@ def _error_response(
     )
 
 
-def create_app() -> FastAPI:
+def create_app(
+    provider_factory: Callable[[], MarketDataProvider] = YFinanceProvider,
+) -> FastAPI:
     app = FastAPI(title="Markov Stock Analyzer")
     app.state.internal_api_token = load_internal_api_token()
+    app.state.provider_factory = provider_factory
 
     @app.middleware("http")
     async def request_id_middleware(request: Request, call_next):
@@ -63,6 +70,42 @@ def create_app() -> FastAPI:
             error.status_code,
             error.code,
             error.message,
+        )
+
+    @app.exception_handler(APIError)
+    async def api_error_handler(
+        request: Request,
+        error: APIError,
+    ) -> JSONResponse:
+        return _error_response(
+            request,
+            error.status_code,
+            error.code,
+            error.message,
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def request_validation_error_handler(
+        request: Request,
+        error: RequestValidationError,
+    ) -> JSONResponse:
+        fields = [
+            {
+                "loc": [str(part) for part in item.get("loc", ())],
+                "type": item.get("type", "validation_error"),
+            }
+            for item in error.errors()
+        ]
+        is_invalid_json = any(
+            item.get("type") == "json_invalid"
+            for item in error.errors()
+        )
+        return _error_response(
+            request,
+            400 if is_invalid_json else 422,
+            "INVALID_JSON" if is_invalid_json else "VALIDATION_ERROR",
+            "Request body is invalid" if is_invalid_json else "Request validation failed",
+            {"fields": fields},
         )
 
     @app.exception_handler(StarletteHTTPException)

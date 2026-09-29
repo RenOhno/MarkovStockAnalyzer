@@ -15,6 +15,14 @@ class InternalAPIError(Exception):
         super().__init__(message)
 
 
+class APIError(Exception):
+    def __init__(self, code: str, message: str, status_code: int):
+        self.code = code
+        self.message = message
+        self.status_code = status_code
+        super().__init__(message)
+
+
 def load_internal_api_token() -> str:
     token = os.environ.get("INTERNAL_API_TOKEN")
     if not token:

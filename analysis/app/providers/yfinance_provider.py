@@ -39,6 +39,7 @@ class YFinanceProvider(MarketDataProvider):
             repair=False,
             rounding=False,
             progress=False,
+            timeout=5,
         )
 
         if data.empty:
