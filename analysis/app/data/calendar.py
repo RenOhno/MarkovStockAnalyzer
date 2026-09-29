@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from functools import lru_cache
 
 import exchange_calendars as xcals
