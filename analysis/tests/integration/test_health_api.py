@@ -1,13 +1,20 @@
 from fastapi.testclient import TestClient
-
-from app.main import app
-
-
-client = TestClient(app)
+import pytest
 
 
-def test_health_returns_up_and_engine_version():
-    response = client.get("/internal/v1/health")
+@pytest.fixture
+def client(monkeypatch):
+    monkeypatch.setenv("INTERNAL_API_TOKEN", "health-test-token")
+    from app.main import create_app
+
+    return TestClient(create_app())
+
+
+def test_health_returns_up_and_engine_version(client):
+    response = client.get(
+        "/internal/v1/health",
+        headers={"X-Internal-Token": "health-test-token"},
+    )
 
     assert response.status_code == 200
     assert response.json() == {
@@ -16,13 +23,16 @@ def test_health_returns_up_and_engine_version():
     }
 
 
-def test_unknown_url_returns_404():
-    response = client.get("/internal/v1/unknown")
+def test_unknown_url_returns_404(client):
+    response = client.get(
+        "/internal/v1/unknown",
+        headers={"X-Internal-Token": "health-test-token"},
+    )
 
     assert response.status_code == 404
 
 
-def test_health_is_registered_in_openapi_as_get():
+def test_health_is_registered_in_openapi_as_get(client):
     response = client.get("/openapi.json")
 
     assert response.status_code == 200
@@ -31,7 +41,7 @@ def test_health_is_registered_in_openapi_as_get():
     assert "get" in paths["/internal/v1/health"]
 
 
-def test_import_and_health_do_not_call_network_or_analysis(monkeypatch):
+def test_import_and_health_do_not_call_network_or_analysis(client, monkeypatch):
     calls = []
 
     monkeypatch.setattr(
@@ -43,7 +53,10 @@ def test_import_and_health_do_not_call_network_or_analysis(monkeypatch):
         lambda *args, **kwargs: calls.append("analysis"),
     )
 
-    response = client.get("/internal/v1/health")
+    response = client.get(
+        "/internal/v1/health",
+        headers={"X-Internal-Token": "health-test-token"},
+    )
 
     assert response.status_code == 200
     assert calls == []
