@@ -29,6 +29,11 @@ class MetricsResult:
     log_loss: float | None
     skip_reasons: dict[str, int]
     tie_count: int
+    baseline_compared_count: int
+    majority_correct_count: int
+    majority_accuracy: float | None
+    persistence_correct_count: int
+    persistence_accuracy: float | None
 
 
 def evaluate_predictions(result: BacktestResult) -> MetricsResult:
@@ -61,6 +66,14 @@ def evaluate_predictions(result: BacktestResult) -> MetricsResult:
     confusion_matrix = _confusion_matrix(scored)
     precision = _precision(scored)
     recall = _recall(scored)
+    majority_correct_count = sum(
+        prediction.majority_state == prediction.actual_state
+        for prediction in scored
+    )
+    persistence_correct_count = sum(
+        prediction.persistence_state == prediction.actual_state
+        for prediction in scored
+    )
 
     return MetricsResult(
         eligible_count=eligible_count,
@@ -82,6 +95,19 @@ def evaluate_predictions(result: BacktestResult) -> MetricsResult:
             Counter(prediction.skip_code for prediction in skipped)
         ),
         tie_count=sum(_has_probability_tie(prediction) for prediction in scored),
+        baseline_compared_count=predicted_count,
+        majority_correct_count=majority_correct_count,
+        majority_accuracy=(
+            majority_correct_count / predicted_count
+            if predicted_count > 0
+            else None
+        ),
+        persistence_correct_count=persistence_correct_count,
+        persistence_accuracy=(
+            persistence_correct_count / predicted_count
+            if predicted_count > 0
+            else None
+        ),
     )
 
 
@@ -111,6 +137,10 @@ def _validate_predictions(predictions: Sequence[BacktestPrediction]) -> None:
                 raise ValueError("INVALID_PROBABILITIES")
             if prediction.skip_code is not None:
                 raise ValueError("INVALID_SCORED_SKIP_CODE")
+            if prediction.majority_state not in STATE_ORDER:
+                raise ValueError("INVALID_MAJORITY_STATE")
+            if prediction.persistence_state not in STATE_ORDER:
+                raise ValueError("INVALID_PERSISTENCE_STATE")
         elif prediction.status == STATUS_SKIPPED:
             if prediction.predicted_state is not None:
                 raise ValueError("INVALID_SKIPPED_PREDICTED_STATE")
@@ -118,6 +148,10 @@ def _validate_predictions(predictions: Sequence[BacktestPrediction]) -> None:
                 raise ValueError("INVALID_SKIPPED_PROBABILITIES")
             if not prediction.skip_code:
                 raise ValueError("MISSING_SKIP_CODE")
+            if prediction.majority_state is not None:
+                raise ValueError("INVALID_SKIPPED_MAJORITY_STATE")
+            if prediction.persistence_state is not None:
+                raise ValueError("INVALID_SKIPPED_PERSISTENCE_STATE")
         else:
             raise ValueError("INVALID_PREDICTION_STATUS")
 

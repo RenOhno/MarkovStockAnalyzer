@@ -20,6 +20,8 @@ def prediction(
     status=STATUS_SCORED,
     skip_code=None,
     index=0,
+    majority_state=None,
+    persistence_state=None,
 ):
     current = date(2026, 1, 1) + timedelta(days=index)
     return BacktestPrediction(
@@ -32,6 +34,20 @@ def prediction(
         probabilities=probabilities,
         status=status,
         skip_code=skip_code,
+        majority_state=(
+            majority_state
+            if status == STATUS_SCORED and majority_state is not None
+            else predicted
+            if status == STATUS_SCORED
+            else None
+        ),
+        persistence_state=(
+            persistence_state
+            if status == STATUS_SCORED and persistence_state is not None
+            else actual
+            if status == STATUS_SCORED
+            else None
+        ),
     )
 
 
@@ -215,3 +231,58 @@ def test_skipped_prediction_without_reason_is_rejected():
 def test_empty_backtest_result_is_rejected():
     with pytest.raises(ValueError, match="EMPTY_BACKTEST_RESULT"):
         evaluate_predictions(BacktestResult([]))
+
+
+def test_baseline_accuracy_uses_only_markov_scored_days():
+    records = [
+        prediction(
+            "UP",
+            "UP",
+            [1.0, 0.0, 0.0],
+            majority_state="UP",
+            persistence_state="DOWN",
+        ),
+        prediction(
+            "FLAT",
+            "FLAT",
+            [0.0, 1.0, 0.0],
+            majority_state="UP",
+            persistence_state="FLAT",
+            index=1,
+        ),
+        prediction(
+            "DOWN",
+            None,
+            None,
+            STATUS_SKIPPED,
+            "ZERO_ROW_UNESTIMATED",
+            2,
+        ),
+    ]
+
+    result = evaluate_predictions(BacktestResult(records))
+
+    assert result.baseline_compared_count == 2
+    assert result.baseline_compared_count == result.predicted_count
+    assert result.majority_correct_count == 1
+    assert result.majority_accuracy == pytest.approx(0.5)
+    assert result.persistence_correct_count == 1
+    assert result.persistence_accuracy == pytest.approx(0.5)
+
+
+def test_baseline_accuracy_is_none_when_every_day_is_skipped():
+    record = prediction(
+        "UP",
+        None,
+        None,
+        STATUS_SKIPPED,
+        "ZERO_ROW_UNESTIMATED",
+    )
+
+    result = evaluate_predictions(BacktestResult([record]))
+
+    assert result.baseline_compared_count == 0
+    assert result.majority_correct_count == 0
+    assert result.majority_accuracy is None
+    assert result.persistence_correct_count == 0
+    assert result.persistence_accuracy is None

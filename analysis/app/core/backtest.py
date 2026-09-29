@@ -4,6 +4,10 @@ from typing import Sequence
 
 import numpy as np
 
+from app.core.baselines import (
+    predict_majority_state,
+    predict_persistence_state,
+)
 from app.core.markov import forecast_distribution
 from app.core.transition import count_transitions, estimate_mle
 
@@ -26,6 +30,8 @@ class BacktestPrediction:
     probabilities: list[float] | None
     status: str
     skip_code: str | None
+    majority_state: str | None = None
+    persistence_state: str | None = None
 
 
 @dataclass(frozen=True)
@@ -92,6 +98,8 @@ def walk_forward(
                     probabilities=None,
                     status=STATUS_SKIPPED,
                     skip_code=SKIP_ZERO_ROW_UNESTIMATED,
+                    majority_state=None,
+                    persistence_state=None,
                 )
             )
             continue
@@ -102,6 +110,10 @@ def walk_forward(
             horizon,
         )
         predicted_state = int(np.argmax(probabilities))
+        majority_state = predict_majority_state(training_states)
+        persistence_state = predict_persistence_state(
+            int(state_array[origin_index])
+        )
         predictions.append(
             BacktestPrediction(
                 origin_date=origin_date,
@@ -113,6 +125,8 @@ def walk_forward(
                 probabilities=probabilities.tolist(),
                 status=STATUS_SCORED,
                 skip_code=None,
+                majority_state=_state_name(majority_state),
+                persistence_state=_state_name(persistence_state),
             )
         )
 

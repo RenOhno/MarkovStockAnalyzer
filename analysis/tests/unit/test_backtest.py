@@ -114,6 +114,19 @@ def test_unestimated_training_row_is_skipped_without_probabilities():
     assert record.predicted_state is None
     assert record.probabilities is None
     assert record.actual_state == "UP"
+    assert record.majority_state is None
+    assert record.persistence_state is None
+
+
+def test_scored_prediction_contains_both_baseline_states():
+    states, dates = make_series([0, 1, 2] * 14)
+
+    result = walk_forward(states, dates, dates[30], dates[30])
+    record = result.predictions[0]
+
+    assert record.status == STATUS_SCORED
+    assert record.majority_state == "UP"
+    assert record.persistence_state == "DOWN"
 
 
 def test_predicted_state_is_the_highest_probability_state():
