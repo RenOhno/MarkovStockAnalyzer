@@ -8,6 +8,12 @@ from app.api.analysis_adapter import (
     validate_condition_dataset,
     validate_preprocessed_dataset,
 )
+from app.api.backtest_adapter import (
+    MAX_EVALUATION_CANDIDATES,
+    build_backtest_response,
+    evaluation_dates,
+    prepare_backtest_dataset,
+)
 from app.api.security import APIError, require_internal_token
 from app.data.calendar import previous_session
 from app.data.payload import (
@@ -23,10 +29,14 @@ from app.data.payload import (
     provider_version,
 )
 from app.data.preprocess import preprocess_price_dataset
+from app.core.backtest import walk_forward
+from app.core.metrics import evaluate_predictions
 from app.providers.base import MarketDataProvider
 from app.services.analysis_service import AnalysisService
 from app.schemas import (
     AnalyzeInput,
+    BacktestInput,
+    CalculatedBacktest,
     CalculatedAnalysis,
     ENGINE_VERSION,
     FetchPricesRequest,
@@ -218,6 +228,97 @@ def analyze(payload: AnalyzeInput) -> CalculatedAnalysis:
         )
     except ValueError as error:
         raise _analysis_error(error) from error
+    except Exception as error:
+        raise APIError(
+            "CALCULATION_INVARIANT_FAILED",
+            "Calculation failed",
+            500,
+        ) from error
+
+
+def _backtest_error(error: ValueError) -> APIError:
+    code = str(error)
+    if code == "INSUFFICIENT_TRAINING_STATES":
+        return APIError(
+            "INSUFFICIENT_TRAINING_DATA",
+            "Not enough training states before the first target",
+            422,
+        )
+    if code in {
+        "INVALID_EVALUATION_RANGE",
+        "EVALUATION_RANGE_INVALID",
+    }:
+        return APIError(code, "Evaluation range is invalid", 422)
+    if code == "EVALUATION_CANDIDATE_LIMIT_EXCEEDED":
+        return APIError(code, "Too many evaluation candidates", 422)
+    if code in {
+        "DATASET_HASH_MISMATCH",
+        "DATASET_CONDITION_MISMATCH",
+    }:
+        return APIError(
+            code,
+            "Dataset does not match the backtest condition",
+            409,
+        )
+    if code in {"DATA_GAP", "INVALID_PRICE_DATA", "INVALID_DATASET"}:
+        return APIError(code, "Dataset is invalid", 422)
+    if code == "CALCULATION_INVARIANT_FAILED":
+        return APIError(code, "Calculation invariant failed", 500)
+    return APIError("CALCULATION_INVARIANT_FAILED", "Calculation failed", 500)
+
+
+@router.post(
+    "/backtest",
+    response_model=CalculatedBacktest,
+)
+def backtest(payload: BacktestInput) -> CalculatedBacktest:
+    if payload.engineVersion != ENGINE_VERSION:
+        raise APIError(
+            "ENGINE_VERSION_UNSUPPORTED",
+            "Engine version is not supported",
+            409,
+        )
+    if not (
+        payload.condition.startDate
+        <= payload.evaluation.testStart
+        <= payload.evaluation.testEnd
+        <= payload.condition.endDate
+    ):
+        raise APIError(
+            "EVALUATION_RANGE_INVALID",
+            "Evaluation range must be inside the condition range",
+            422,
+        )
+
+    try:
+        _, states, state_dates = prepare_backtest_dataset(
+            payload.condition,
+            payload.dataset,
+        )
+        candidates = evaluation_dates(state_dates, payload.evaluation)
+        if not candidates:
+            raise ValueError("INVALID_EVALUATION_RANGE")
+        if len(candidates) > MAX_EVALUATION_CANDIDATES:
+            raise ValueError("EVALUATION_CANDIDATE_LIMIT_EXCEEDED")
+
+        result = walk_forward(
+            states,
+            state_dates,
+            payload.evaluation.testStart,
+            payload.evaluation.testEnd,
+            min_train_states=payload.evaluation.minTrainStates,
+            training_mode=payload.evaluation.trainingMode,
+            horizon=payload.evaluation.horizon,
+        )
+        metrics = evaluate_predictions(result)
+        return build_backtest_response(
+            result,
+            metrics,
+            payload.evaluation,
+            payload.dataset.contentSha256,
+        )
+    except ValueError as error:
+        raise _backtest_error(error) from error
     except Exception as error:
         raise APIError(
             "CALCULATION_INVARIANT_FAILED",

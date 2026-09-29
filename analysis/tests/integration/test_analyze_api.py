@@ -37,10 +37,10 @@ TOKEN = "analyze-test-token"
 HEADERS = {"X-Internal-Token": TOKEN}
 
 
-def make_dataset_payload(provider="YFINANCE", states=None):
+def make_dataset_payload(provider="YFINANCE", states=None, state_count=31):
     states = states or [0, 0, 1, 2, 0, 2, 1, 0]
-    states = (states * ((31 + len(states) - 1) // len(states)))[:31]
-    dates = sessions(date(2020, 1, 1), date(2022, 12, 31))[:32]
+    states = (states * ((state_count + len(states) - 1) // len(states)))[:state_count]
+    dates = sessions(date(2020, 1, 1), date(2024, 12, 31))[:state_count + 1]
     prices = [Decimal("100")]
     for state in states:
         if state == 0:

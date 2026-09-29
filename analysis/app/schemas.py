@@ -152,6 +152,33 @@ class AnalyzeInput(StrictBaseModel):
     dataset: PriceDatasetPayload
 
 
+class BacktestEvaluation(StrictBaseModel):
+    testStart: date
+    testEnd: date
+    minTrainStates: StrictInt = Field(ge=30)
+    trainingMode: Literal["EXPANDING"]
+    windowSize: None = None
+    horizon: Literal[1]
+
+    @model_validator(mode="after")
+    def validate_evaluation_range(self):
+        if self.testStart > self.testEnd:
+            raise ValueError("testStart must be on or before testEnd")
+        return self
+
+
+class BacktestInput(StrictBaseModel):
+    requestId: StrictStr = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9._:-]+$",
+    )
+    engineVersion: StrictStr = Field(min_length=1, max_length=64)
+    condition: AnalysisCondition
+    dataset: PriceDatasetPayload
+    evaluation: BacktestEvaluation
+
+
 class ForecastPayload(StrictBaseModel):
     horizon: Literal[1, 3, 5, 10]
     probabilities: list[float]
@@ -160,6 +187,52 @@ class ForecastPayload(StrictBaseModel):
 class AnalysisWarning(StrictBaseModel):
     code: StrictStr
     states: list[StrictStr]
+
+
+class BacktestPredictionPayload(StrictBaseModel):
+    originDate: date
+    targetDate: date
+    trainStart: date
+    trainEnd: date
+    actualState: Literal["UP", "FLAT", "DOWN"]
+    predictedState: Literal["UP", "FLAT", "DOWN"] | None
+    probabilities: list[float] | None
+    majorityState: Literal["UP", "FLAT", "DOWN"] | None
+    persistenceState: Literal["UP", "FLAT", "DOWN"] | None
+    status: Literal["SCORED", "SKIPPED"]
+    skipCode: StrictStr | None
+
+
+class BacktestMetricsPayload(StrictBaseModel):
+    accuracy: float | None
+    precision: list[float | None]
+    recall: list[float | None]
+    confusionMatrix: list[list[StrictInt]]
+    brierScore: float | None
+    logLoss: float | None
+    majorityAccuracy: float | None
+    persistenceAccuracy: float | None
+    tieCount: StrictInt
+    skipReasons: dict[str, StrictInt]
+
+
+class BacktestSummary(StrictBaseModel):
+    testStart: date
+    testEnd: date
+    horizon: Literal[1]
+    eligibleCount: StrictInt
+    predictedCount: StrictInt
+    correctCount: StrictInt
+    skippedCount: StrictInt
+    coverage: float
+    metrics: BacktestMetricsPayload
+
+
+class CalculatedBacktest(StrictBaseModel):
+    summary: BacktestSummary
+    predictions: list[BacktestPredictionPayload]
+    engineVersion: StrictStr
+    runtime: dict[str, object]
 
 
 class CalculatedAnalysis(StrictBaseModel):
