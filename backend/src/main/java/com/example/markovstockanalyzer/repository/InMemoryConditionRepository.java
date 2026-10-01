@@ -7,6 +7,8 @@ import org.springframework.stereotype.Repository;
 import java.time.Instant;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.List;
+import java.util.Optional;
 
 @Repository
 public class InMemoryConditionRepository implements ConditionRepository {
@@ -33,6 +35,16 @@ public class InMemoryConditionRepository implements ConditionRepository {
         );
         conditions.put(id, response);
         return response;
+    }
+
+    @Override
+    public List<ConditionResponse> findAll() {
+        return List.copyOf(conditions.values());
+    }
+
+    @Override
+    public Optional<ConditionResponse> findById(Long id) {
+        return Optional.ofNullable(conditions.get(id));
     }
 
     private static final class ListCopy {

@@ -30,4 +30,33 @@ public class ApiExceptionHandler {
                 )
         );
     }
+
+    @ExceptionHandler(StockNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleStockNotFound(
+            StockNotFoundException exception,
+            HttpServletRequest request
+    ) {
+        return notFound("STOCK_NOT_FOUND", request);
+    }
+
+    @ExceptionHandler(ConditionNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleConditionNotFound(
+            ConditionNotFoundException exception,
+            HttpServletRequest request
+    ) {
+        return notFound("CONDITION_NOT_FOUND", request);
+    }
+
+    private ResponseEntity<ApiErrorResponse> notFound(
+            String code,
+            HttpServletRequest request
+    ) {
+        String requestId = request.getHeader("X-Request-Id");
+        if (requestId == null || requestId.isBlank()) {
+            requestId = UUID.randomUUID().toString();
+        }
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                new ApiErrorResponse(code, "Requested resource was not found", requestId, Map.of())
+        );
+    }
 }

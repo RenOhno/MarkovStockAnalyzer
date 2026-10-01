@@ -3,7 +3,10 @@ package com.example.markovstockanalyzer.service;
 import com.example.markovstockanalyzer.dto.request.CreateConditionRequest;
 import com.example.markovstockanalyzer.dto.response.ConditionResponse;
 import com.example.markovstockanalyzer.exception.InvalidConditionException;
+import com.example.markovstockanalyzer.exception.ConditionNotFoundException;
+import com.example.markovstockanalyzer.exception.StockNotFoundException;
 import com.example.markovstockanalyzer.repository.ConditionRepository;
+import com.example.markovstockanalyzer.repository.StockRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -17,12 +20,17 @@ public class ConditionService {
     private static final List<Integer> HORIZONS = List.of(1, 3, 5, 10);
 
     private final ConditionRepository repository;
+    private final StockRepository stockRepository;
 
-    public ConditionService(ConditionRepository repository) {
+    public ConditionService(ConditionRepository repository, StockRepository stockRepository) {
         this.repository = repository;
+        this.stockRepository = stockRepository;
     }
 
     public ConditionResponse create(CreateConditionRequest request) {
+        if (!stockRepository.existsById(request.stockId())) {
+            throw new StockNotFoundException(request.stockId());
+        }
         if (request.startDate().isAfter(request.endDate())) {
             throw new InvalidConditionException("startDate must be on or before endDate");
         }
@@ -50,6 +58,16 @@ public class ConditionService {
             throw new InvalidConditionException("horizons must be [1, 3, 5, 10]");
         }
         return repository.save(request);
+    }
+
+    public List<ConditionResponse> findAll(String stockId) {
+        return repository.findAll().stream()
+                .filter(condition -> stockId == null || stockId.equals(condition.stockId()))
+                .toList();
+    }
+
+    public ConditionResponse findById(Long id) {
+        return repository.findById(id).orElseThrow(() -> new ConditionNotFoundException(id));
     }
 
     private LocalDate maxEndDate(LocalDate startDate) {
