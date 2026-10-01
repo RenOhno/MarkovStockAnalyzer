@@ -1,0 +1,17 @@
+#!/bin/sh
+set -eu
+MAVEN_VERSION=3.9.11
+MAVEN_HOME="${HOME}/.m2/wrapper/dists/apache-maven-${MAVEN_VERSION}"
+MAVEN_BIN="${MAVEN_HOME}/apache-maven-${MAVEN_VERSION}/bin/mvn"
+if [ ! -x "${MAVEN_BIN}" ]; then
+  if [ -z "${JAVA_HOME:-}" ]; then
+    echo "JAVA_HOME is not set. Install Java 21 and set JAVA_HOME." >&2
+    exit 1
+  fi
+  mkdir -p "${MAVEN_HOME}"
+  archive="${MAVEN_HOME}/apache-maven-${MAVEN_VERSION}-bin.tar.gz"
+  curl -fsSL "https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/${MAVEN_VERSION}/apache-maven-${MAVEN_VERSION}-bin.tar.gz" -o "${archive}"
+  tar -xzf "${archive}" -C "${MAVEN_HOME}"
+  rm -f "${archive}"
+fi
+exec "${MAVEN_BIN}" "$@"
