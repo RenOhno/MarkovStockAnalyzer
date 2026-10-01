@@ -1,0 +1,82 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Markov Stock Analyzer",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/internal/v1/health": {
+      "get": {
+        "responses": {
+          "200": { "$ref": "#/components/responses/HealthResponse" }
+        }
+      }
+    },
+    "/internal/v1/prices/fetch": {
+      "post": {
+        "requestBody": { "$ref": "#/components/requestBodies/FetchPricesRequest" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/PriceDatasetPayload" }
+        }
+      }
+    },
+    "/internal/v1/analyze": {
+      "post": {
+        "requestBody": { "$ref": "#/components/requestBodies/AnalyzeInput" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/CalculatedAnalysis" }
+        }
+      }
+    },
+    "/internal/v1/backtest": {
+      "post": {
+        "requestBody": { "$ref": "#/components/requestBodies/BacktestInput" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/CalculatedBacktest" }
+        }
+      }
+    },
+    "/internal/v1/series": {
+      "post": {
+        "requestBody": { "$ref": "#/components/requestBodies/SeriesInput" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/CalculatedSeries" }
+        }
+      }
+    }
+  },
+  "components": {
+    "requestBodies": {
+      "FetchPricesRequest": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FetchPricesRequest" } } } },
+      "AnalyzeInput": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AnalyzeInput" } } } },
+      "BacktestInput": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BacktestInput" } } } },
+      "SeriesInput": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SeriesInput" } } } }
+    },
+    "responses": {
+      "HealthResponse": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthResponse" } } } },
+      "PriceDatasetPayload": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PriceDatasetPayload" } } } },
+      "CalculatedAnalysis": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CalculatedAnalysis" } } } },
+      "CalculatedBacktest": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CalculatedBacktest" } } } },
+      "CalculatedSeries": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CalculatedSeries" } } } }
+    },
+    "schemas": {
+      "ErrorResponse": { "type": "object", "required": ["code", "message", "requestId", "details"] },
+      "HealthResponse": { "type": "object", "required": ["status", "engineVersion"] },
+      "FetchPricesRequest": { "type": "object", "required": ["requestId", "ticker", "exchange", "timeZone", "startDate", "endDate", "includePreviousSession", "priceBasis", "provider"] },
+      "AnalysisCondition": { "type": "object", "required": ["startDate", "endDate", "lowerThreshold", "upperThreshold", "stateCount", "estimator", "windowMode", "windowSize", "horizons"] },
+      "PricePointPayload": { "type": "object", "required": ["date", "close", "adjustedClose", "volume"] },
+      "PriceDatasetPayload": { "type": "object", "required": ["ticker", "exchange", "timeZone", "priceBasis", "provider", "providerVersion", "adjustmentPolicy", "fetchedAt", "coverageStart", "coverageEnd", "contentSha256", "metadata", "prices"] },
+      "AnalyzeInput": { "type": "object", "required": ["requestId", "engineVersion", "condition", "dataset"] },
+      "CalculatedAnalysis": { "type": "object", "required": ["stateOrder", "asOfDate", "currentState", "sampleCount", "transitionCount", "transitionCounts", "transitionMatrix", "predictionStatus", "forecasts", "warnings", "engineVersion", "runtime"] },
+      "BacktestEvaluation": { "type": "object", "required": ["testStart", "testEnd", "minTrainStates", "trainingMode", "windowSize", "horizon"] },
+      "BacktestInput": { "type": "object", "required": ["requestId", "engineVersion", "condition", "dataset", "evaluation"] },
+      "BacktestPredictionPayload": { "type": "object", "required": ["originDate", "targetDate", "trainStart", "trainEnd", "actualState", "predictedState", "probabilities", "majorityState", "persistenceState", "status", "skipCode"] },
+      "BacktestMetricsPayload": { "type": "object", "required": ["accuracy", "precision", "recall", "confusionMatrix", "brierScore", "logLoss", "majorityAccuracy", "persistenceAccuracy", "tieCount", "skipReasons"] },
+      "BacktestSummary": { "type": "object", "required": ["testStart", "testEnd", "horizon", "eligibleCount", "predictedCount", "correctCount", "skippedCount", "coverage", "metrics"] },
+      "CalculatedBacktest": { "type": "object", "required": ["summary", "predictions", "engineVersion", "runtime"] },
+      "SeriesInput": { "type": "object", "required": ["requestId", "engineVersion", "condition", "dataset", "requiredEngineVersion"] },
+      "SeriesPointPayload": { "type": "object", "required": ["date", "close", "adjustedClose", "returnValue", "state"] },
+      "CalculatedSeries": { "type": "object", "required": ["priceBasis", "points", "engineVersion"] }
+    }
+  }
+}

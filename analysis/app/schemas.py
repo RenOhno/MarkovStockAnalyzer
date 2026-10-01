@@ -111,7 +111,10 @@ def _decimal_input(value: object) -> Decimal:
         raise ValueError("threshold must be a finite decimal") from None
 
 
-Threshold = Annotated[Decimal, BeforeValidator(_decimal_input)]
+Threshold = Annotated[
+    Decimal,
+    BeforeValidator(_decimal_input, json_schema_input_type=float),
+]
 
 
 class AnalysisCondition(StrictBaseModel):
@@ -122,7 +125,7 @@ class AnalysisCondition(StrictBaseModel):
     stateCount: Literal[3]
     estimator: Literal["MLE_STRICT"]
     windowMode: Literal["FULL"]
-    windowSize: None = None
+    windowSize: None
     horizons: list[Literal[1, 3, 5, 10]]
 
     @model_validator(mode="after")
@@ -162,7 +165,7 @@ class BacktestEvaluation(StrictBaseModel):
     testEnd: date
     minTrainStates: StrictInt = Field(ge=30)
     trainingMode: Literal["EXPANDING"]
-    windowSize: None = None
+    windowSize: None
     horizon: Literal[1]
 
     @model_validator(mode="after")

@@ -1,10 +1,15 @@
 import os
 import secrets
 
-from fastapi import Header, Request
+from fastapi import Depends, Request
+from fastapi.security import APIKeyHeader
 
 
 INTERNAL_TOKEN_HEADER = "X-Internal-Token"
+internal_token_header = APIKeyHeader(
+    name=INTERNAL_TOKEN_HEADER,
+    auto_error=False,
+)
 
 
 class InternalAPIError(Exception):
@@ -32,10 +37,7 @@ def load_internal_api_token() -> str:
 
 def require_internal_token(
     request: Request,
-    internal_token: str | None = Header(
-        default=None,
-        alias=INTERNAL_TOKEN_HEADER,
-    ),
+    internal_token: str | None = Depends(internal_token_header),
 ) -> None:
     configured_token = request.app.state.internal_api_token
     if (
