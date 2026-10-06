@@ -1,11 +1,15 @@
 package com.example.markovstockanalyzer.client;
 
+import com.example.markovstockanalyzer.dto.request.AnalyzeInput;
 import com.example.markovstockanalyzer.dto.request.FetchPricesRequest;
+import com.example.markovstockanalyzer.dto.response.CalculatedAnalysis;
 import com.example.markovstockanalyzer.dto.response.PriceDatasetPayload;
 import com.example.markovstockanalyzer.dto.response.PythonHealthResponse;
 import com.example.markovstockanalyzer.exception.AnalysisServiceUnavailableException;
 import com.example.markovstockanalyzer.exception.ApiErrorResponse;
 import com.example.markovstockanalyzer.exception.PythonApiException;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -19,13 +23,24 @@ import java.util.Map;
 @Component
 public class PythonAnalysisClient {
     private final RestClient restClient;
+    private final RestClient analyzeRestClient;
     private final String internalApiToken;
 
     public PythonAnalysisClient(
             RestClient pythonRestClient,
+            String internalApiToken
+    ) {
+        this(pythonRestClient, pythonRestClient, internalApiToken);
+    }
+
+    @Autowired
+    public PythonAnalysisClient(
+            @Qualifier("pythonRestClient") RestClient pythonRestClient,
+            @Qualifier("pythonAnalyzeRestClient") RestClient pythonAnalyzeRestClient,
             @Value("${INTERNAL_API_TOKEN:}") String internalApiToken
     ) {
         this.restClient = pythonRestClient;
+        this.analyzeRestClient = pythonAnalyzeRestClient;
         this.internalApiToken = internalApiToken;
     }
 
@@ -70,18 +85,48 @@ public class PythonAnalysisClient {
         }
     }
 
-    private ApiErrorResponse pythonError(RestClientResponseException exception, String requestId) {
+    public CalculatedAnalysis analyze(AnalyzeInput input) {
+        try {
+            return analyzeRestClient.post()
+                    .uri("/internal/v1/analyze")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .header("X-Internal-Token", internalApiToken)
+                    .header("X-Request-Id", input.requestId())
+                    .body(input)
+                    .retrieve()
+                    .body(CalculatedAnalysis.class);
+        } catch (RestClientResponseException exception) {
+            ApiErrorResponse fallback = new ApiErrorResponse(
+                    "ANALYSIS_SERVICE_ERROR", "Python analysis service request failed",
+                    input.requestId(), Map.of()
+            );
+            throw new PythonApiException(
+                    exception.getStatusCode().value(), pythonError(exception, fallback), exception
+            );
+        } catch (RestClientException exception) {
+            throw new AnalysisServiceUnavailableException(exception);
+        }
+    }
+
+    private ApiErrorResponse pythonError(RestClientResponseException exception, ApiErrorResponse fallback) {
         try {
             ApiErrorResponse error = exception.getResponseBodyAs(ApiErrorResponse.class);
             if (error != null && error.code() != null && !error.code().isBlank()
                     && error.message() != null && !error.message().isBlank()
                     && error.details() != null) {
-                return new ApiErrorResponse(error.code(), error.message(), requestId, error.details());
+                return new ApiErrorResponse(
+                        error.code(), error.message(),
+                        error.requestId() == null ? fallback.requestId() : error.requestId(), error.details()
+                );
             }
         } catch (RuntimeException ignored) {
             // Non-contract bodies (including provider HTML) must not become public errors.
         }
-        return switch (exception.getStatusCode().value()) {
+        return fallback;
+    }
+
+    private ApiErrorResponse pythonError(RestClientResponseException exception, String requestId) {
+        ApiErrorResponse fallback = switch (exception.getStatusCode().value()) {
             case 422 -> new ApiErrorResponse(
                     "INVALID_CONDITION", "Price fetch request is invalid", requestId, Map.of());
             case 502 -> new ApiErrorResponse(
@@ -91,5 +136,6 @@ public class PythonAnalysisClient {
             default -> new ApiErrorResponse(
                     "ANALYSIS_SERVICE_ERROR", "Python analysis service request failed", requestId, Map.of());
         };
+        return pythonError(exception, fallback);
     }
 }

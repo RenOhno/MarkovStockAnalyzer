@@ -12,6 +12,19 @@ import static org.mockito.Mockito.verify;
 
 class RestClientConfigTests {
     @Test
+    void configuresAnalyzeWithTwoSecondConnectionAndFiveSecondResponseTimeouts() {
+        try (MockedConstruction<SimpleClientHttpRequestFactory> factories =
+                     mockConstruction(SimpleClientHttpRequestFactory.class)) {
+            new RestClientConfig().pythonAnalyzeRestClient("http://127.0.0.1:8000");
+
+            assertEquals(1, factories.constructed().size());
+            SimpleClientHttpRequestFactory factory = factories.constructed().getFirst();
+            verify(factory).setConnectTimeout(Duration.ofSeconds(2));
+            verify(factory).setReadTimeout(Duration.ofSeconds(5));
+        }
+    }
+
+    @Test
     void configuresTwoSecondConnectionAndFifteenSecondResponseTimeouts() {
         try (MockedConstruction<SimpleClientHttpRequestFactory> factories =
                      mockConstruction(SimpleClientHttpRequestFactory.class)) {
