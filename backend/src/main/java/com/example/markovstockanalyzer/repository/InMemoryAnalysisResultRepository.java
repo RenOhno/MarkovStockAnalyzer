@@ -7,6 +7,7 @@ import org.springframework.stereotype.Repository;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -24,6 +25,11 @@ public class InMemoryAnalysisResultRepository implements AnalysisResultRepositor
         AnalysisResult saved = new AnalysisResult(id, conditionId, datasetId, snapshot, Instant.now());
         results.put(id, saved);
         return saved;
+    }
+
+    @Override
+    public List<AnalysisResult> findAll() {
+        return List.copyOf(results.values());
     }
 
     @Override

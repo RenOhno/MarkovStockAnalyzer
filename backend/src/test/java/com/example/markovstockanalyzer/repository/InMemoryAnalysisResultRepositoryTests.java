@@ -52,6 +52,17 @@ class InMemoryAnalysisResultRepositoryTests {
     }
 
     @Test
+    void findAllReturnsReadOnlySnapshotOfAllSavedResults() {
+        AnalysisResult first = repository.save(101L, 501L, new Fixture().result());
+        var snapshot = repository.findAll();
+        AnalysisResult second = repository.save(102L, 502L, new Fixture().result());
+        assertEquals(List.of(first), snapshot);
+        assertEquals(2, repository.findAll().size());
+        assertEquals(java.util.Set.of(first, second), java.util.Set.copyOf(repository.findAll()));
+        assertThrows(UnsupportedOperationException.class, snapshot::clear);
+    }
+
+    @Test
     void storesUnavailableResultsWithNullProbabilityCells() {
         Fixture fixture = new Fixture();
         fixture.counts = new ArrayList<>(List.of(List.of(15, 0, 0), List.of(0, 0, 0), List.of(0, 0, 15)));

@@ -8,6 +8,7 @@ import com.example.markovstockanalyzer.model.BacktestResult;
 import com.example.markovstockanalyzer.repository.BacktestResultRepository;
 import com.example.markovstockanalyzer.repository.PriceDatasetRepository;
 import org.springframework.stereotype.Service;
+import com.example.markovstockanalyzer.validation.Pagination;
 
 @Service
 public class BacktestResultQueryService {
@@ -30,7 +31,7 @@ public class BacktestResultQueryService {
     }
 
     public BacktestPredictionsResponse predictions(Long id, int page, int size) {
-        if (page < 0 || size < 1 || size > 100) { throw new InvalidPaginationException(); }
+        Pagination.validate(page, size);
         var predictions = result(id).calculatedBacktest().predictions();
         long offset = (long) page * size;
         int from = (int) Math.min(offset, predictions.size());

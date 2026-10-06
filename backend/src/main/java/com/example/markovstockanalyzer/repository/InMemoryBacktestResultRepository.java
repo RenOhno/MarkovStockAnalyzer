@@ -6,6 +6,7 @@ import com.example.markovstockanalyzer.model.BacktestResult;
 import org.springframework.stereotype.Repository;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -25,6 +26,11 @@ public class InMemoryBacktestResultRepository implements BacktestResultRepositor
                 snapshot, Instant.now());
         results.put(id, saved);
         return saved;
+    }
+
+    @Override
+    public List<BacktestResult> findAll() {
+        return List.copyOf(results.values());
     }
 
     @Override

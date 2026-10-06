@@ -62,4 +62,13 @@ class InMemoryBacktestResultRepositoryTests {
         assertThrows(UnsupportedOperationException.class, () -> ((Map<?, ?>) stored.runtime().get("dependencyVersions")).clear());
     }
     @Test void unknownIdReturnsEmpty() { assertTrue(repository.findById(999L).isEmpty()); }
+
+    @Test void findAllReturnsReadOnlySnapshotOfAllSavedResults() {
+        var first = repository.save(101L, 501L, BacktestFixtures.REQUEST.evaluation(), BacktestFixtures.mixed());
+        var snapshot = repository.findAll();
+        var second = repository.save(102L, 502L, BacktestFixtures.REQUEST.evaluation(), BacktestFixtures.allSkipped());
+        assertEquals(List.of(first), snapshot);
+        assertEquals(Set.of(first, second), Set.copyOf(repository.findAll()));
+        assertThrows(UnsupportedOperationException.class, snapshot::clear);
+    }
 }

@@ -3,7 +3,7 @@ package com.example.markovstockanalyzer.controller;
 import com.example.markovstockanalyzer.dto.request.CreateBacktestRequest;
 import com.example.markovstockanalyzer.dto.response.BacktestResultResponse;
 import com.example.markovstockanalyzer.dto.response.BacktestPredictionsResponse;
-import com.example.markovstockanalyzer.exception.InvalidPaginationException;
+import com.example.markovstockanalyzer.validation.Pagination;
 import com.example.markovstockanalyzer.service.*;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -41,11 +41,6 @@ public class BacktestController {
     @GetMapping("/{id}/predictions")
     public BacktestPredictionsResponse predictions(@PathVariable("id") Long id,
             @RequestParam(defaultValue = "0") String page, @RequestParam(defaultValue = "20") String size) {
-        return query.predictions(id, integer(page), integer(size));
-    }
-
-    private int integer(String value) {
-        try { return Integer.parseInt(value); }
-        catch (NumberFormatException exception) { throw new InvalidPaginationException(); }
+        return query.predictions(id, Pagination.parse(page), Pagination.parse(size));
     }
 }

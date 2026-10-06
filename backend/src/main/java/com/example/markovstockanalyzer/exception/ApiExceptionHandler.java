@@ -80,6 +80,11 @@ public class ApiExceptionHandler {
         return notFound("BACKTEST_RESULT_NOT_FOUND", request);
     }
 
+    @ExceptionHandler(InvalidHistoryTypeException.class)
+    public ResponseEntity<ApiErrorResponse> handleHistoryType(InvalidHistoryTypeException exception, HttpServletRequest request) {
+        return error(400, "INVALID_HISTORY_TYPE", "History type must be ANALYSIS, BACKTEST or ALL", request);
+    }
+
     @ExceptionHandler(InvalidPaginationException.class)
     public ResponseEntity<ApiErrorResponse> handlePagination(InvalidPaginationException exception, HttpServletRequest request) {
         return error(400, "INVALID_PAGINATION", "page must be nonnegative and size must be between 1 and 100", request);
