@@ -4,6 +4,10 @@ import com.example.markovstockanalyzer.dto.response.AnalysisWarning;
 import com.example.markovstockanalyzer.dto.response.CalculatedAnalysis;
 import com.example.markovstockanalyzer.dto.response.ForecastPayload;
 import com.example.markovstockanalyzer.dto.response.PriceDatasetPayload;
+import com.example.markovstockanalyzer.dto.response.BacktestMetrics;
+import com.example.markovstockanalyzer.dto.response.BacktestPrediction;
+import com.example.markovstockanalyzer.dto.response.BacktestSummary;
+import com.example.markovstockanalyzer.dto.response.CalculatedBacktest;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -38,6 +42,23 @@ final class InMemorySnapshots {
                         .toList(),
                 source.engineVersion(), jsonMap(source.runtime())
         );
+    }
+
+    static CalculatedBacktest backtest(CalculatedBacktest source) {
+        BacktestMetrics metrics = source.summary().metrics();
+        BacktestMetrics copiedMetrics = new BacktestMetrics(metrics.accuracy(), list(metrics.precision()), list(metrics.recall()),
+                metrics.confusionMatrix().stream().map(InMemorySnapshots::list).toList(), metrics.brierScore(), metrics.logLoss(),
+                metrics.majorityAccuracy(), metrics.persistenceAccuracy(), metrics.tieCount(), Map.copyOf(metrics.skipReasons()));
+        BacktestSummary summary = source.summary();
+        BacktestSummary copiedSummary = new BacktestSummary(summary.testStart(), summary.testEnd(), summary.horizon(),
+                summary.eligibleCount(), summary.predictedCount(), summary.correctCount(), summary.skippedCount(),
+                summary.coverage(), copiedMetrics);
+        return new CalculatedBacktest(copiedSummary, source.predictions().stream().map(prediction -> new BacktestPrediction(
+                prediction.originDate(), prediction.targetDate(), prediction.trainStart(), prediction.trainEnd(),
+                prediction.actualState(), prediction.predictedState(),
+                prediction.probabilities() == null ? null : list(prediction.probabilities()), prediction.majorityState(),
+                prediction.persistenceState(), prediction.status(), prediction.skipCode())).toList(),
+                source.engineVersion(), jsonMap(source.runtime()));
     }
 
     private static <T> List<T> list(List<T> source) {

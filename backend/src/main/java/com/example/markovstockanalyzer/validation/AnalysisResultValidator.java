@@ -13,7 +13,7 @@ public class AnalysisResultValidator {
     private static final List<String> STATE_ORDER = List.of("UP", "FLAT", "DOWN");
     private static final List<Integer> HORIZONS = List.of(1, 3, 5, 10);
     // docs/system-design.md section 10.4 permits absolute error 1e-9 at DB/API boundaries.
-    private static final double PROBABILITY_SUM_TOLERANCE = 1e-9;
+    public static final double PROBABILITY_SUM_TOLERANCE = 1e-9;
 
     public void validate(CalculatedAnalysis result) {
         validate(result, AnalyzeInput.ENGINE_VERSION);

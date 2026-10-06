@@ -21,24 +21,32 @@ public class AnalysisResultResponseMapper {
         }
         CalculatedAnalysis calculated = result.calculatedAnalysis();
         PriceDatasetPayload payload = dataset.dataset();
-        DataSourceResponse dataSource = new DataSourceResponse(
-                payload.provider(), payload.providerVersion(), payload.adjustmentPolicy(),
-                payload.fetchedAt().toInstant(), payload.coverageStart(), payload.coverageEnd(),
-                payload.contentSha256(), label(value(payload.metadata(), "calendarName")),
-                version(value(payload.metadata(), "calendarVersion"))
-        );
-        Map<String, Object> runtime = calculated.runtime();
-        ProvenanceResponse provenance = new ProvenanceResponse(
-                label(value(runtime, "engineVersion")), commit(value(runtime, "gitCommit")),
-                dependencyVersions(runtime), label(value(runtime, "normalizationVersion")),
-                label(value(runtime, "configurationVersion"))
-        );
+        DataSourceResponse dataSource = dataSource(dataset);
+        ProvenanceResponse provenance = provenance(calculated.runtime());
         return new AnalysisResultResponse(
                 result.id().toString(), result.conditionId().toString(), result.datasetId().toString(),
                 calculated.stateOrder(), payload.priceBasis(), calculated.asOfDate(), calculated.currentState(),
                 calculated.sampleCount(), calculated.transitionCount(), calculated.transitionCounts(),
                 calculated.transitionMatrix(), calculated.predictionStatus(), calculated.forecasts(),
                 calculated.warnings(), dataSource, provenance, calculated.engineVersion(), result.createdAt()
+        );
+    }
+
+    public DataSourceResponse dataSource(PriceDataset dataset) {
+        PriceDatasetPayload payload = dataset.dataset();
+        return new DataSourceResponse(
+                payload.provider(), payload.providerVersion(), payload.adjustmentPolicy(),
+                payload.fetchedAt().toInstant(), payload.coverageStart(), payload.coverageEnd(),
+                payload.contentSha256(), label(value(payload.metadata(), "calendarName")),
+                version(value(payload.metadata(), "calendarVersion"))
+        );
+    }
+
+    public ProvenanceResponse provenance(Map<String, Object> runtime) {
+        return new ProvenanceResponse(
+                label(value(runtime, "engineVersion")), commit(value(runtime, "gitCommit")),
+                dependencyVersions(runtime), label(value(runtime, "normalizationVersion")),
+                label(value(runtime, "configurationVersion"))
         );
     }
 

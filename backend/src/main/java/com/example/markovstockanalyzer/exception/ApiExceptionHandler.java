@@ -28,16 +28,17 @@ public class ApiExceptionHandler {
             "token|password|secret|cookie|authorization|stack.?trace|traceback|[a-z]:[\\\\/]|/[a-zA-Z_.][^\\s]*",
             Pattern.CASE_INSENSITIVE);
 
-    @ExceptionHandler({InvalidConditionException.class, MethodArgumentNotValidException.class})
+    @ExceptionHandler({InvalidConditionException.class, InvalidBacktestRequestException.class, MethodArgumentNotValidException.class})
     public ResponseEntity<ApiErrorResponse> handleValidation(
             Exception exception,
             HttpServletRequest request
     ) {
         String requestId = requestId(request);
+        boolean backtest = "/api/backtest".equals(request.getRequestURI());
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(
                 new ApiErrorResponse(
-                        "INVALID_CONDITION",
-                        "/api/analysis".equals(request.getRequestURI()) ? "Analysis request is invalid" : "Condition request is invalid",
+                        backtest ? "INVALID_BACKTEST_REQUEST" : "INVALID_CONDITION",
+                        backtest ? "Backtest request is invalid" : "/api/analysis".equals(request.getRequestURI()) ? "Analysis request is invalid" : "Condition request is invalid",
                         requestId,
                         Map.of()
                 )
@@ -72,6 +73,16 @@ public class ApiExceptionHandler {
             AnalysisResultNotFoundException exception, HttpServletRequest request
     ) {
         return notFound("ANALYSIS_RESULT_NOT_FOUND", request);
+    }
+
+    @ExceptionHandler(BacktestResultNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleBacktestNotFound(BacktestResultNotFoundException exception, HttpServletRequest request) {
+        return notFound("BACKTEST_RESULT_NOT_FOUND", request);
+    }
+
+    @ExceptionHandler(InvalidPaginationException.class)
+    public ResponseEntity<ApiErrorResponse> handlePagination(InvalidPaginationException exception, HttpServletRequest request) {
+        return error(400, "INVALID_PAGINATION", "page must be nonnegative and size must be between 1 and 100", request);
     }
 
     @ExceptionHandler(DatasetConditionMismatchException.class)

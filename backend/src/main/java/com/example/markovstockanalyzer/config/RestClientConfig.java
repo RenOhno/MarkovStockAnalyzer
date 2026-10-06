@@ -24,6 +24,13 @@ public class RestClientConfig {
         return createClient(baseUrl, Duration.ofSeconds(5));
     }
 
+    @Bean
+    RestClient pythonBacktestRestClient(
+            @Value("${python.api.base-url:http://127.0.0.1:8000}") String baseUrl
+    ) {
+        return createClient(baseUrl, Duration.ofSeconds(12));
+    }
+
     private RestClient createClient(String baseUrl, Duration readTimeout) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(Duration.ofSeconds(2));

@@ -1,6 +1,8 @@
 package com.example.markovstockanalyzer.client;
 
 import com.example.markovstockanalyzer.dto.request.AnalyzeInput;
+import com.example.markovstockanalyzer.dto.request.BacktestInput;
+import com.example.markovstockanalyzer.dto.response.CalculatedBacktest;
 import com.example.markovstockanalyzer.dto.request.FetchPricesRequest;
 import com.example.markovstockanalyzer.dto.request.SeriesInput;
 import com.example.markovstockanalyzer.dto.response.CalculatedAnalysis;
@@ -26,6 +28,7 @@ import java.util.Map;
 public class PythonAnalysisClient {
     private final RestClient restClient;
     private final RestClient analyzeRestClient;
+    private final RestClient backtestRestClient;
     private final String internalApiToken;
 
     public PythonAnalysisClient(
@@ -35,14 +38,24 @@ public class PythonAnalysisClient {
         this(pythonRestClient, pythonRestClient, internalApiToken);
     }
 
-    @Autowired
     public PythonAnalysisClient(
             @Qualifier("pythonRestClient") RestClient pythonRestClient,
             @Qualifier("pythonAnalyzeRestClient") RestClient pythonAnalyzeRestClient,
             @Value("${INTERNAL_API_TOKEN:}") String internalApiToken
     ) {
+        this(pythonRestClient, pythonAnalyzeRestClient, pythonAnalyzeRestClient, internalApiToken);
+    }
+
+    @Autowired
+    public PythonAnalysisClient(
+            @Qualifier("pythonRestClient") RestClient pythonRestClient,
+            @Qualifier("pythonAnalyzeRestClient") RestClient pythonAnalyzeRestClient,
+            @Qualifier("pythonBacktestRestClient") RestClient pythonBacktestRestClient,
+            @Value("${INTERNAL_API_TOKEN:}") String internalApiToken
+    ) {
         this.restClient = pythonRestClient;
         this.analyzeRestClient = pythonAnalyzeRestClient;
+        this.backtestRestClient = pythonBacktestRestClient;
         this.internalApiToken = internalApiToken;
     }
 
@@ -130,6 +143,22 @@ public class PythonAnalysisClient {
             throw new PythonApiException(
                     exception.getStatusCode().value(), pythonError(exception, fallback), exception
             );
+        } catch (RestClientException exception) {
+            throw new AnalysisServiceUnavailableException(exception);
+        }
+    }
+
+    public CalculatedBacktest backtest(BacktestInput input) {
+        try {
+            return backtestRestClient.post().uri("/internal/v1/backtest")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .header("X-Internal-Token", internalApiToken)
+                    .header("X-Request-Id", input.requestId())
+                    .body(input).retrieve().body(CalculatedBacktest.class);
+        } catch (RestClientResponseException exception) {
+            ApiErrorResponse fallback = new ApiErrorResponse("ANALYSIS_SERVICE_ERROR",
+                    "Python analysis service request failed", input.requestId(), Map.of());
+            throw new PythonApiException(exception.getStatusCode().value(), pythonError(exception, fallback), exception);
         } catch (RestClientException exception) {
             throw new AnalysisServiceUnavailableException(exception);
         }
