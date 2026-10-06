@@ -67,6 +67,13 @@ public class ApiExceptionHandler {
         return notFound("PRICE_DATASET_NOT_FOUND", request);
     }
 
+    @ExceptionHandler(AnalysisResultNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleAnalysisNotFound(
+            AnalysisResultNotFoundException exception, HttpServletRequest request
+    ) {
+        return notFound("ANALYSIS_RESULT_NOT_FOUND", request);
+    }
+
     @ExceptionHandler(DatasetConditionMismatchException.class)
     public ResponseEntity<ApiErrorResponse> handleDatasetMismatch(
             DatasetConditionMismatchException exception, HttpServletRequest request

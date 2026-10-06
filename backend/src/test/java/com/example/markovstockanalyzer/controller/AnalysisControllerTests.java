@@ -23,6 +23,7 @@ import com.example.markovstockanalyzer.repository.InMemoryConditionRepository;
 import com.example.markovstockanalyzer.repository.InMemoryPriceDatasetRepository;
 import com.example.markovstockanalyzer.repository.InMemoryStockRepository;
 import com.example.markovstockanalyzer.service.AnalysisResultWriter;
+import com.example.markovstockanalyzer.service.AnalysisResultQueryService;
 import com.example.markovstockanalyzer.service.AnalysisService;
 import com.example.markovstockanalyzer.service.ConditionService;
 import com.example.markovstockanalyzer.validation.AnalysisResultValidator;
@@ -56,6 +57,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -82,6 +84,95 @@ class AnalysisControllerTests {
                 List.of(1, 3, 5, 10)));
         service = new AnalysisService(conditions, stocks, datasets, pythonClient, new AnalysisResultValidator());
         mvc = mockMvc(new AnalysisResultWriter(datasets, results));
+    }
+
+    @Test
+    void getsSavedAnalysisWithItsOwnDatasetAndProvenanceWithoutPythonOrRevalidation() throws Exception {
+        PriceDataset dataset = datasets.save(condition.stockId(), payload());
+        CalculatedAnalysis base = calculated(false);
+        CalculatedAnalysis historical = new CalculatedAnalysis(
+                base.stateOrder(), base.asOfDate(), base.currentState(), base.sampleCount(), base.transitionCount(),
+                base.transitionCounts(), base.transitionMatrix(), base.predictionStatus(), base.forecasts(), base.warnings(),
+                "msa-core-v0", Map.of("engineVersion", "msa-core-v0", "gitCommit", "b".repeat(40),
+                        "pythonVersion", "3.11.9", "numpyVersion", "1.26.4", "pandasVersion", "2.1.4",
+                        "normalizationVersion", "NORMALIZATION_SAVED", "configurationVersion", "analysis-config-saved-v1"));
+        AnalysisResult saved = results.save(condition.id(), dataset.id(), historical);
+        PriceDatasetPayload source = payload();
+        // A newer stored dataset must not change the old analysis's source information.
+        datasets.save(condition.stockId(), new PriceDatasetPayload(
+                source.ticker(), source.exchange(), source.timeZone(), source.priceBasis(), source.provider(), "0.2.99",
+                source.adjustmentPolicy(), source.fetchedAt().plusHours(1), source.coverageStart(), source.coverageEnd(),
+                "c".repeat(64), Map.of("calendarName", "XTKS", "calendarVersion", "4.12.0"), source.prices()));
+
+        MvcResult response = mvc.perform(get("/api/analysis/{id}", saved.id()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(saved.id().toString()))
+                .andExpect(jsonPath("$.conditionId").value(condition.id().toString()))
+                .andExpect(jsonPath("$.datasetId").value(dataset.id().toString()))
+                .andExpect(jsonPath("$.engineVersion").value("msa-core-v0"))
+                .andExpect(jsonPath("$.createdAt").value(saved.createdAt().toString()))
+                .andExpect(jsonPath("$.transitionCounts[0][0]").value(7))
+                .andExpect(jsonPath("$.dataSource.provider").value("YFINANCE"))
+                .andExpect(jsonPath("$.dataSource.providerVersion").value("0.2.65"))
+                .andExpect(jsonPath("$.dataSource.adjustmentPolicy").value("PROVIDER_ADJUSTED_CLOSE_V1"))
+                .andExpect(jsonPath("$.dataSource.fetchedAt").value("2026-10-06T01:02:03Z"))
+                .andExpect(jsonPath("$.dataSource.coverageStart").value("2024-12-30"))
+                .andExpect(jsonPath("$.dataSource.coverageEnd").value("2025-02-19"))
+                .andExpect(jsonPath("$.dataSource.contentSha256").value("a".repeat(64)))
+                .andExpect(jsonPath("$.dataSource.calendarName").value("XTKS"))
+                .andExpect(jsonPath("$.dataSource.calendarVersion").value("4.11.1"))
+                .andExpect(jsonPath("$.provenance.engineVersion").value("msa-core-v0"))
+                .andExpect(jsonPath("$.provenance.gitCommit").value("b".repeat(40)))
+                .andExpect(jsonPath("$.provenance.dependencyVersions.python").value("3.11.9"))
+                .andExpect(jsonPath("$.provenance.dependencyVersions.numpy").value("1.26.4"))
+                .andExpect(jsonPath("$.provenance.dependencyVersions.pandas").value("2.1.4"))
+                .andExpect(jsonPath("$.provenance.normalizationVersion").value("NORMALIZATION_SAVED"))
+                .andExpect(jsonPath("$.provenance.configurationVersion").value("analysis-config-saved-v1"))
+                .andReturn();
+
+        var json = jsonMapper.readTree(response.getResponse().getContentAsString());
+        assertEquals(jsonMapper.valueToTree(historical.transitionMatrix()), json.get("transitionMatrix"));
+        assertEquals(jsonMapper.valueToTree(historical.forecasts()), json.get("forecasts"));
+        verifyNoInteractions(pythonClient);
+        assertSame(saved, results.findById(saved.id()).orElseThrow());
+    }
+
+    @Test
+    void getsSavedUnavailablePartialResultAs200WithoutPython() throws Exception {
+        PriceDataset dataset = datasets.save(condition.stockId(), payload());
+        AnalysisResult saved = results.save(condition.id(), dataset.id(), calculated(true));
+
+        MvcResult response = mvc.perform(get("/api/analysis/{id}", saved.id()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.predictionStatus").value("UNAVAILABLE"))
+                .andExpect(jsonPath("$.forecasts").isEmpty())
+                .andExpect(jsonPath("$.warnings[0].code").value("ZERO_ROW_UNESTIMATED"))
+                .andReturn();
+
+        assertTrue(response.getResponse().getContentAsString().contains("[null,null,null]"));
+        verifyNoInteractions(pythonClient);
+    }
+
+    @Test
+    void missingSavedAnalysisReturnsDedicated404WithRequestId() throws Exception {
+        mvc.perform(get("/api/analysis/999"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("ANALYSIS_RESULT_NOT_FOUND"))
+                .andExpect(jsonPath("$.requestId").isNotEmpty());
+
+        verifyNoInteractions(pythonClient);
+    }
+
+    @Test
+    void missingReferencedDatasetReturns404WithoutPythonFallback() throws Exception {
+        AnalysisResult saved = results.save(condition.id(), 999L, calculated(false));
+
+        mvc.perform(get("/api/analysis/{id}", saved.id()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PRICE_DATASET_NOT_FOUND"))
+                .andExpect(jsonPath("$.requestId").isNotEmpty());
+
+        verifyNoInteractions(pythonClient);
     }
 
     @Test
@@ -292,7 +383,9 @@ class AnalysisControllerTests {
     private MockMvc mockMvc(AnalysisResultWriter writer) {
         ApiExceptionHandler advice = new ApiExceptionHandler();
         ReflectionTestUtils.setField(advice, "internalApiToken", INTERNAL_TOKEN);
-        return MockMvcBuilders.standaloneSetup(new AnalysisController(service, writer, new AnalysisResultResponseMapper(), datasets))
+        AnalysisResultResponseMapper mapper = new AnalysisResultResponseMapper();
+        AnalysisResultQueryService queryService = new AnalysisResultQueryService(results, datasets, mapper);
+        return MockMvcBuilders.standaloneSetup(new AnalysisController(service, writer, mapper, datasets, queryService))
                 .setControllerAdvice(advice).build();
     }
 

@@ -9,11 +9,14 @@ import com.example.markovstockanalyzer.model.PriceDataset;
 import com.example.markovstockanalyzer.repository.PriceDatasetRepository;
 import com.example.markovstockanalyzer.service.AnalysisExecutionResult;
 import com.example.markovstockanalyzer.service.AnalysisResultWriter;
+import com.example.markovstockanalyzer.service.AnalysisResultQueryService;
 import com.example.markovstockanalyzer.service.AnalysisService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -28,13 +31,21 @@ public class AnalysisController {
     private final AnalysisResultWriter writer;
     private final AnalysisResultResponseMapper mapper;
     private final PriceDatasetRepository datasets;
+    private final AnalysisResultQueryService queryService;
 
     public AnalysisController(AnalysisService service, AnalysisResultWriter writer,
-                              AnalysisResultResponseMapper mapper, PriceDatasetRepository datasets) {
+                              AnalysisResultResponseMapper mapper, PriceDatasetRepository datasets,
+                              AnalysisResultQueryService queryService) {
         this.service = service;
         this.writer = writer;
         this.mapper = mapper;
         this.datasets = datasets;
+        this.queryService = queryService;
+    }
+
+    @GetMapping("/{id}")
+    public AnalysisResultResponse findById(@PathVariable("id") Long id) {
+        return queryService.findById(id);
     }
 
     @PostMapping
