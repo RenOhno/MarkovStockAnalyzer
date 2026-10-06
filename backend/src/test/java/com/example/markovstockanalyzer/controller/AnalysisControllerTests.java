@@ -4,8 +4,12 @@ import com.example.markovstockanalyzer.client.PythonAnalysisClient;
 import com.example.markovstockanalyzer.dto.request.AnalyzeInput;
 import com.example.markovstockanalyzer.dto.request.CreateConditionRequest;
 import com.example.markovstockanalyzer.dto.request.FetchPricesRequest;
+import com.example.markovstockanalyzer.dto.request.SeriesInput;
+import com.example.markovstockanalyzer.dto.request.AnalysisCondition;
 import com.example.markovstockanalyzer.dto.response.AnalysisWarning;
 import com.example.markovstockanalyzer.dto.response.CalculatedAnalysis;
+import com.example.markovstockanalyzer.dto.response.CalculatedSeries;
+import com.example.markovstockanalyzer.dto.response.SeriesPoint;
 import com.example.markovstockanalyzer.dto.response.ConditionResponse;
 import com.example.markovstockanalyzer.dto.response.ForecastPayload;
 import com.example.markovstockanalyzer.dto.response.PriceDatasetPayload;
@@ -25,6 +29,7 @@ import com.example.markovstockanalyzer.repository.InMemoryStockRepository;
 import com.example.markovstockanalyzer.service.AnalysisResultWriter;
 import com.example.markovstockanalyzer.service.AnalysisResultQueryService;
 import com.example.markovstockanalyzer.service.AnalysisService;
+import com.example.markovstockanalyzer.service.AnalysisSeriesService;
 import com.example.markovstockanalyzer.service.ConditionService;
 import com.example.markovstockanalyzer.validation.AnalysisResultValidator;
 import org.junit.jupiter.api.BeforeEach;
@@ -67,6 +72,7 @@ class AnalysisControllerTests {
     private PythonAnalysisClient pythonClient;
     private InMemoryPriceDatasetRepository datasets;
     private InMemoryAnalysisResultRepository results;
+    private InMemoryConditionRepository conditionRepository;
     private AnalysisService service;
     private ConditionResponse condition;
     private MockMvc mvc;
@@ -77,13 +83,143 @@ class AnalysisControllerTests {
         datasets = new InMemoryPriceDatasetRepository();
         results = new InMemoryAnalysisResultRepository();
         InMemoryStockRepository stocks = new InMemoryStockRepository();
-        ConditionService conditions = new ConditionService(new InMemoryConditionRepository(), stocks);
+        conditionRepository = new InMemoryConditionRepository();
+        ConditionService conditions = new ConditionService(conditionRepository, stocks);
         condition = conditions.create(new CreateConditionRequest(
                 "Analysis test", "7203", LocalDate.parse("2025-01-06"), LocalDate.parse("2025-02-19"),
                 new BigDecimal("-0.005"), new BigDecimal("0.005"), 3, "MLE_STRICT", "FULL", null,
                 List.of(1, 3, 5, 10)));
         service = new AnalysisService(conditions, stocks, datasets, pythonClient, new AnalysisResultValidator());
         mvc = mockMvc(new AnalysisResultWriter(datasets, results));
+    }
+
+    @Test
+    void getsSeriesFromSavedConditionAndDatasetWithOneRequestIdAndPublicFieldsOnly() throws Exception {
+        AnalysisResult saved = saveForSeries("msa-core-v1");
+        PriceDataset dataset = datasets.findById(saved.datasetId()).orElseThrow();
+        conditionRepository.save(new CreateConditionRequest("Newer condition", "9001",
+                condition.startDate(), condition.endDate(), new BigDecimal("-0.007"), new BigDecimal("0.01"),
+                3, "MLE_STRICT", "FULL", null, List.of(1, 3, 5, 10)));
+        datasets.save("9001", payload());
+        when(pythonClient.series(any(SeriesInput.class))).thenReturn(calculatedSeries("msa-core-v1"));
+
+        MvcResult response = mvc.perform(get("/api/analysis/{id}/series", saved.id()).header("X-Request-Id", "client-id"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.analysisId").value(saved.id().toString()))
+                .andExpect(jsonPath("$.priceBasis").value("PROVIDER_ADJUSTED_CLOSE"))
+                .andExpect(jsonPath("$.points.length()").value(2))
+                .andExpect(jsonPath("$.points[0].date").value("2025-01-06"))
+                .andExpect(jsonPath("$.points[0].close").value("100.0000000000"))
+                .andExpect(jsonPath("$.points[0].adjustedClose").value("100.0000000000"))
+                .andExpect(jsonPath("$.points[0].returnValue").value(0.0))
+                .andExpect(jsonPath("$.points[0].state").value("FLAT"))
+                .andExpect(jsonPath("$.engineVersion").doesNotExist())
+                .andReturn();
+
+        ArgumentCaptor<SeriesInput> input = ArgumentCaptor.forClass(SeriesInput.class);
+        verify(pythonClient).series(input.capture());
+        verifyNoMoreInteractions(pythonClient);
+        assertEquals(AnalysisCondition.from(condition), input.getValue().condition());
+        assertSame(dataset.dataset(), input.getValue().dataset());
+        assertEquals(saved.calculatedAnalysis().engineVersion(), input.getValue().requiredEngineVersion());
+        assertEquals("msa-core-v1", input.getValue().engineVersion());
+        String requestId = response.getResponse().getHeader("X-Request-Id");
+        assertDoesNotThrow(() -> UUID.fromString(requestId));
+        assertNotEquals("client-id", requestId);
+        assertEquals(requestId, input.getValue().requestId());
+        var json = jsonMapper.readTree(response.getResponse().getContentAsString());
+        assertEquals(3, json.size());
+        assertEquals(5, json.get("points").get(0).size());
+        assertEquals(jsonMapper.valueToTree(calculatedSeries("msa-core-v1").points()), json.get("points"));
+    }
+
+    @Test
+    void missingSeriesAnalysisReturns404WithoutPython() throws Exception {
+        mvc.perform(get("/api/analysis/999/series"))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("ANALYSIS_RESULT_NOT_FOUND"))
+                .andExpect(jsonPath("$.requestId").isNotEmpty());
+        verifyNoInteractions(pythonClient);
+    }
+
+    @Test
+    void missingSeriesConditionReturns404WithoutPython() throws Exception {
+        PriceDataset dataset = datasets.save(condition.stockId(), payload());
+        AnalysisResult saved = results.save(999L, dataset.id(), calculated(false));
+
+        mvc.perform(get("/api/analysis/{id}/series", saved.id()))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("CONDITION_NOT_FOUND"));
+        verifyNoInteractions(pythonClient);
+    }
+
+    @Test
+    void missingSeriesDatasetReturns404WithoutFetchingReplacement() throws Exception {
+        AnalysisResult saved = results.save(condition.id(), 999L, calculated(false));
+
+        mvc.perform(get("/api/analysis/{id}/series", saved.id()))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("PRICE_DATASET_NOT_FOUND"));
+        verifyNoInteractions(pythonClient);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"409,ENGINE_VERSION_UNSUPPORTED,msa-core-v0", "422,INVALID_DATASET,msa-core-v1"})
+    void preservesSeriesPythonErrorsAndPassesSavedRequiredVersionWithoutFallback(
+            int statusCode, String code, String savedVersion
+    ) throws Exception {
+        AnalysisResult saved = saveForSeries(savedVersion);
+        when(pythonClient.series(any(SeriesInput.class))).thenThrow(new PythonApiException(statusCode,
+                new ApiErrorResponse(code, "Series request failed", "python-series-error",
+                        Map.of("requiredEngineVersion", savedVersion, "supportedEngineVersion", "msa-core-v1")), null));
+
+        mvc.perform(get("/api/analysis/{id}/series", saved.id()))
+                .andExpect(status().is(statusCode)).andExpect(jsonPath("$.code").value(code))
+                .andExpect(jsonPath("$.message").value("Series request failed"))
+                .andExpect(jsonPath("$.requestId").value("python-series-error"))
+                .andExpect(jsonPath("$.details.requiredEngineVersion").value(savedVersion));
+
+        ArgumentCaptor<SeriesInput> input = ArgumentCaptor.forClass(SeriesInput.class);
+        verify(pythonClient).series(input.capture());
+        assertEquals(savedVersion, input.getValue().requiredEngineVersion());
+        assertEquals("msa-core-v1", input.getValue().engineVersion());
+        verifyNoMoreInteractions(pythonClient);
+    }
+
+    @Test
+    void seriesConnectionFailureReturnsSafe503() throws Exception {
+        AnalysisResult saved = saveForSeries("msa-core-v1");
+        when(pythonClient.series(any(SeriesInput.class))).thenThrow(new AnalysisServiceUnavailableException(
+                new ConnectException("token=secret /private/path")));
+
+        MvcResult response = mvc.perform(get("/api/analysis/{id}/series", saved.id()))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("ANALYSIS_SERVICE_UNAVAILABLE"))
+                .andExpect(jsonPath("$.requestId").isNotEmpty()).andReturn();
+
+        assertFalse(response.getResponse().getContentAsString().contains("secret"));
+        assertFalse(response.getResponse().getContentAsString().contains("private"));
+        verifySeriesErrorRequestId(response);
+    }
+
+    @Test
+    void seriesTimeoutReturns504WithSameProcessRequestId() throws Exception {
+        AnalysisResult saved = saveForSeries("msa-core-v1");
+        when(pythonClient.series(any(SeriesInput.class))).thenThrow(new AnalysisServiceUnavailableException(
+                new SocketTimeoutException("Read timed out")));
+
+        MvcResult response = mvc.perform(get("/api/analysis/{id}/series", saved.id()))
+                .andExpect(status().isGatewayTimeout()).andExpect(jsonPath("$.code").value("PROVIDER_TIMEOUT"))
+                .andExpect(jsonPath("$.requestId").isNotEmpty()).andReturn();
+        verifySeriesErrorRequestId(response);
+    }
+
+    @Test
+    void rejectsDifferentReturnedSeriesEngineVersionInsteadOfPublishingNewLogic() throws Exception {
+        AnalysisResult saved = saveForSeries("msa-core-v1");
+        when(pythonClient.series(any(SeriesInput.class))).thenReturn(calculatedSeries("msa-core-v2"));
+
+        MvcResult response = mvc.perform(get("/api/analysis/{id}/series", saved.id()))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ENGINE_VERSION_UNSUPPORTED"))
+                .andExpect(jsonPath("$.requestId").isNotEmpty()).andReturn();
+        verifySeriesErrorRequestId(response);
     }
 
     @Test
@@ -380,12 +516,37 @@ class AnalysisControllerTests {
         assertFalse(response.getResponse().getContentAsString().contains("private"));
     }
 
+    private AnalysisResult saveForSeries(String engineVersion) {
+        PriceDataset dataset = datasets.save(condition.stockId(), payload());
+        CalculatedAnalysis base = calculated(false);
+        CalculatedAnalysis saved = new CalculatedAnalysis(base.stateOrder(), base.asOfDate(), base.currentState(),
+                base.sampleCount(), base.transitionCount(), base.transitionCounts(), base.transitionMatrix(),
+                base.predictionStatus(), base.forecasts(), base.warnings(), engineVersion, Map.of("engineVersion", engineVersion));
+        return results.save(condition.id(), dataset.id(), saved);
+    }
+
+    private CalculatedSeries calculatedSeries(String engineVersion) {
+        return new CalculatedSeries("PROVIDER_ADJUSTED_CLOSE", List.of(
+                new SeriesPoint(LocalDate.parse("2025-01-06"), "100.0000000000", "100.0000000000", 0.0, "FLAT"),
+                new SeriesPoint(LocalDate.parse("2025-02-19"), "100.0000000000", "100.0000000000", 0.0, "FLAT")
+        ), engineVersion);
+    }
+
+    private void verifySeriesErrorRequestId(MvcResult response) throws Exception {
+        ArgumentCaptor<SeriesInput> input = ArgumentCaptor.forClass(SeriesInput.class);
+        verify(pythonClient).series(input.capture());
+        assertEquals(input.getValue().requestId(), jsonMapper.readTree(response.getResponse().getContentAsString())
+                .get("requestId").asString());
+        verifyNoMoreInteractions(pythonClient);
+    }
+
     private MockMvc mockMvc(AnalysisResultWriter writer) {
         ApiExceptionHandler advice = new ApiExceptionHandler();
         ReflectionTestUtils.setField(advice, "internalApiToken", INTERNAL_TOKEN);
         AnalysisResultResponseMapper mapper = new AnalysisResultResponseMapper();
         AnalysisResultQueryService queryService = new AnalysisResultQueryService(results, datasets, mapper);
-        return MockMvcBuilders.standaloneSetup(new AnalysisController(service, writer, mapper, datasets, queryService))
+        AnalysisSeriesService seriesService = new AnalysisSeriesService(results, conditionRepository, datasets, pythonClient);
+        return MockMvcBuilders.standaloneSetup(new AnalysisController(service, writer, mapper, datasets, queryService, seriesService))
                 .setControllerAdvice(advice).build();
     }
 

@@ -2,6 +2,7 @@ package com.example.markovstockanalyzer.controller;
 
 import com.example.markovstockanalyzer.dto.request.CreateAnalysisRequest;
 import com.example.markovstockanalyzer.dto.response.AnalysisResultResponse;
+import com.example.markovstockanalyzer.dto.response.AnalysisSeriesResponse;
 import com.example.markovstockanalyzer.exception.PriceDatasetNotFoundException;
 import com.example.markovstockanalyzer.mapper.AnalysisResultResponseMapper;
 import com.example.markovstockanalyzer.model.AnalysisResult;
@@ -11,6 +12,7 @@ import com.example.markovstockanalyzer.service.AnalysisExecutionResult;
 import com.example.markovstockanalyzer.service.AnalysisResultWriter;
 import com.example.markovstockanalyzer.service.AnalysisResultQueryService;
 import com.example.markovstockanalyzer.service.AnalysisService;
+import com.example.markovstockanalyzer.service.AnalysisSeriesService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -32,20 +34,30 @@ public class AnalysisController {
     private final AnalysisResultResponseMapper mapper;
     private final PriceDatasetRepository datasets;
     private final AnalysisResultQueryService queryService;
+    private final AnalysisSeriesService seriesService;
 
     public AnalysisController(AnalysisService service, AnalysisResultWriter writer,
                               AnalysisResultResponseMapper mapper, PriceDatasetRepository datasets,
-                              AnalysisResultQueryService queryService) {
+                              AnalysisResultQueryService queryService, AnalysisSeriesService seriesService) {
         this.service = service;
         this.writer = writer;
         this.mapper = mapper;
         this.datasets = datasets;
         this.queryService = queryService;
+        this.seriesService = seriesService;
     }
 
     @GetMapping("/{id}")
     public AnalysisResultResponse findById(@PathVariable("id") Long id) {
         return queryService.findById(id);
+    }
+
+    @GetMapping("/{id}/series")
+    public ResponseEntity<AnalysisSeriesResponse> series(@PathVariable("id") Long id, HttpServletRequest request) {
+        String requestId = UUID.randomUUID().toString();
+        request.setAttribute("requestId", requestId);
+        AnalysisSeriesResponse response = seriesService.series(id, requestId);
+        return ResponseEntity.ok().header("X-Request-Id", requestId).body(response);
     }
 
     @PostMapping
