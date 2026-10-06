@@ -15,15 +15,20 @@ import com.example.markovstockanalyzer.exception.CalculationInvariantFailedExcep
 import com.example.markovstockanalyzer.exception.ConditionNotFoundException;
 import com.example.markovstockanalyzer.exception.PythonApiException;
 import com.example.markovstockanalyzer.exception.StockNotFoundException;
+import com.example.markovstockanalyzer.exception.DatasetConditionMismatchException;
+import com.example.markovstockanalyzer.exception.PriceDatasetNotFoundException;
 import com.example.markovstockanalyzer.model.AnalysisResult;
 import com.example.markovstockanalyzer.model.PriceDataset;
 import com.example.markovstockanalyzer.repository.InMemoryAnalysisResultRepository;
 import com.example.markovstockanalyzer.repository.InMemoryPriceDatasetRepository;
 import com.example.markovstockanalyzer.repository.StockRepository;
+import com.example.markovstockanalyzer.repository.PriceDatasetRepository;
 import com.example.markovstockanalyzer.validation.AnalysisResultValidator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
@@ -35,6 +40,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -82,6 +88,8 @@ class AnalysisServiceTests {
     @Mock
     private StockRepository stockRepository;
     @Mock
+    private PriceDatasetRepository priceDatasetRepository;
+    @Mock
     private PythonAnalysisClient pythonClient;
     @Mock
     private AnalysisResultValidator validator;
@@ -89,7 +97,7 @@ class AnalysisServiceTests {
 
     @BeforeEach
     void setUp() {
-        service = new AnalysisService(conditionService, stockRepository, pythonClient, validator);
+        service = new AnalysisService(conditionService, stockRepository, priceDatasetRepository, pythonClient, validator);
     }
 
     @Test
@@ -125,6 +133,136 @@ class AnalysisServiceTests {
         assertSame(CONDITION, result.condition());
         assertSame(DATASET, result.dataset());
         assertSame(CALCULATED, result.calculatedAnalysis());
+    }
+
+    @Test
+    void explicitNullDatasetIdUsesFetchWithoutDatasetLookup() {
+        givenSavedConditionAndStock();
+        when(pythonClient.fetchPrices(any(FetchPricesRequest.class))).thenReturn(DATASET);
+        when(pythonClient.analyze(any(AnalyzeInput.class))).thenReturn(CALCULATED);
+
+        AnalysisExecutionResult result = service.analyze(CONDITION_ID, null, REQUEST_ID);
+
+        verify(pythonClient).fetchPrices(any(FetchPricesRequest.class));
+        verify(validator).validate(CALCULATED, "msa-core-v1");
+        verifyNoInteractions(priceDatasetRepository);
+        assertSame(DATASET, result.dataset());
+    }
+
+    @Test
+    void reusesSavedDatasetWithoutFetchAndPreservesRequestIdAndSnapshot() {
+        PriceDatasetPayload payload = reusableDataset();
+        givenReusedDataset("7203", payload);
+        when(pythonClient.analyze(any(AnalyzeInput.class))).thenReturn(CALCULATED);
+
+        AnalysisExecutionResult result = service.analyze(CONDITION_ID, 501L, REQUEST_ID);
+
+        ArgumentCaptor<AnalyzeInput> input = ArgumentCaptor.forClass(AnalyzeInput.class);
+        InOrder order = inOrder(conditionService, priceDatasetRepository, pythonClient, validator);
+        order.verify(conditionService).findById(CONDITION_ID);
+        order.verify(priceDatasetRepository).findById(501L);
+        order.verify(pythonClient).analyze(input.capture());
+        order.verify(validator).validate(CALCULATED, "msa-core-v1");
+        verifyNoMoreInteractions(conditionService, priceDatasetRepository, pythonClient, validator);
+        verifyNoInteractions(stockRepository);
+        assertSame(payload, input.getValue().dataset());
+        assertEquals(REQUEST_ID, input.getValue().requestId());
+        assertEquals("msa-core-v1", input.getValue().engineVersion());
+        assertEquals(AnalysisCondition.from(CONDITION), input.getValue().condition());
+        assertSame(payload, result.dataset());
+        assertSame(CALCULATED, result.calculatedAnalysis());
+    }
+
+    @Test
+    void missingDatasetThrowsDedicatedExceptionWithoutPythonCalls() {
+        when(conditionService.findById(CONDITION_ID)).thenReturn(CONDITION);
+        when(priceDatasetRepository.findById(501L)).thenReturn(Optional.empty());
+
+        assertThrows(PriceDatasetNotFoundException.class, () -> service.analyze(CONDITION_ID, 501L, REQUEST_ID));
+
+        verifyNoInteractions(stockRepository, pythonClient, validator);
+    }
+
+    @Test
+    void rejectsSavedStockIdMismatchBeforePythonCalls() {
+        givenReusedDataset("9001", reusableDataset());
+
+        DatasetConditionMismatchException error = assertThrows(DatasetConditionMismatchException.class,
+                () -> service.analyze(CONDITION_ID, 501L, REQUEST_ID));
+
+        assertEquals("DATASET_CONDITION_MISMATCH", error.getCode());
+        verifyNoInteractions(stockRepository, pythonClient, validator);
+    }
+
+    @Test
+    void rejectsUnsupportedSavedPriceBasisBeforePythonCalls() {
+        PriceDatasetPayload payload = copyDataset("CLOSE", DATASET.coverageStart(), DATASET.coverageEnd(),
+                reusableDataset().prices());
+        givenReusedDataset("7203", payload);
+
+        assertThrows(DatasetConditionMismatchException.class, () -> service.analyze(CONDITION_ID, 501L, REQUEST_ID));
+
+        verifyNoInteractions(stockRepository, pythonClient, validator);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"coverage starts too late", "no preceding price", "coverage ends too early", "no price in range"})
+    void rejectsMissingRangeOrPrecedingPriceBeforePythonCalls(String problem) {
+        PriceDatasetPayload valid = reusableDataset();
+        PriceDatasetPayload payload = switch (problem) {
+            case "coverage starts too late" -> copyDataset(valid.priceBasis(), CONDITION.startDate(),
+                    valid.coverageEnd(), valid.prices());
+            case "no preceding price" -> copyDataset(valid.priceBasis(), valid.coverageStart(), valid.coverageEnd(),
+                    List.of(point(CONDITION.startDate()), point(CONDITION.endDate())));
+            case "coverage ends too early" -> copyDataset(valid.priceBasis(), valid.coverageStart(),
+                    CONDITION.startDate().minusDays(1), valid.prices());
+            default -> copyDataset(valid.priceBasis(), valid.coverageStart(), valid.coverageEnd(),
+                    List.of(point(valid.coverageStart())));
+        };
+        givenReusedDataset("7203", payload);
+
+        assertThrows(DatasetConditionMismatchException.class, () -> service.analyze(CONDITION_ID, 501L, REQUEST_ID));
+
+        verifyNoInteractions(stockRepository, pythonClient, validator);
+    }
+
+    @Test
+    void acceptsWeekendEndDateWithoutRequiringCalendarDateInPrices() {
+        ConditionResponse weekendCondition = new ConditionResponse(
+                CONDITION.id(), CONDITION.name(), CONDITION.stockId(), CONDITION.startDate(),
+                LocalDate.parse("2025-02-22"), CONDITION.lowerThreshold(), CONDITION.upperThreshold(),
+                CONDITION.stateCount(), CONDITION.estimator(), CONDITION.windowMode(), CONDITION.windowSize(),
+                CONDITION.horizons(), CONDITION.createdAt());
+        PriceDatasetPayload payload = copyDataset(DATASET.priceBasis(), DATASET.coverageStart(),
+                LocalDate.parse("2025-02-21"), List.of(point(DATASET.coverageStart()),
+                        point(CONDITION.startDate()), point(LocalDate.parse("2025-02-21"))));
+        when(conditionService.findById(CONDITION_ID)).thenReturn(weekendCondition);
+        when(priceDatasetRepository.findById(501L)).thenReturn(Optional.of(
+                new PriceDataset(501L, "7203", payload, Instant.now())));
+        when(pythonClient.analyze(any(AnalyzeInput.class))).thenReturn(CALCULATED);
+
+        AnalysisExecutionResult result = service.analyze(CONDITION_ID, 501L, REQUEST_ID);
+
+        assertSame(payload, result.dataset());
+        verify(pythonClient).analyze(new AnalyzeInput(REQUEST_ID, AnalysisCondition.from(weekendCondition), payload));
+        verifyNoMoreInteractions(pythonClient);
+        verify(validator).validate(CALCULATED, "msa-core-v1");
+    }
+
+    @Test
+    void propagatesPythonCalendarCoverageFailureWithoutFetchOrValidation() {
+        // Overlap and a preceding price do not prove complete XTKS session coverage.
+        // Exact missing-session checks remain in the existing Python analyze boundary.
+        givenReusedDataset("7203", reusableDataset());
+        PythonApiException failure = pythonFailure(409, "DATASET_CONDITION_MISMATCH");
+        when(pythonClient.analyze(any(AnalyzeInput.class))).thenThrow(failure);
+
+        assertSame(failure, assertThrows(PythonApiException.class,
+                () -> service.analyze(CONDITION_ID, 501L, REQUEST_ID)));
+
+        verify(pythonClient).analyze(any(AnalyzeInput.class));
+        verifyNoMoreInteractions(pythonClient);
+        verifyNoInteractions(validator);
     }
 
     @Test
@@ -209,6 +347,27 @@ class AnalysisServiceTests {
         when(conditionService.findById(CONDITION_ID)).thenReturn(CONDITION);
         when(stockRepository.findAll()).thenReturn(List.of(
                 new StockSummary("9001", "TEST", "Other stock", "XTKS", "JPY", "Asia/Tokyo"), STOCK));
+    }
+
+    private void givenReusedDataset(String stockId, PriceDatasetPayload payload) {
+        when(conditionService.findById(CONDITION_ID)).thenReturn(CONDITION);
+        when(priceDatasetRepository.findById(501L)).thenReturn(Optional.of(
+                new PriceDataset(501L, stockId, payload, Instant.now())));
+    }
+
+    private PriceDatasetPayload reusableDataset() {
+        return copyDataset(DATASET.priceBasis(), DATASET.coverageStart(), DATASET.coverageEnd(),
+                List.of(point(DATASET.coverageStart()), point(CONDITION.startDate()), point(CONDITION.endDate())));
+    }
+
+    private PriceDatasetPayload copyDataset(String basis, LocalDate start, LocalDate end, List<PricePoint> prices) {
+        return new PriceDatasetPayload(DATASET.ticker(), DATASET.exchange(), DATASET.timeZone(), basis,
+                DATASET.provider(), DATASET.providerVersion(), DATASET.adjustmentPolicy(), DATASET.fetchedAt(),
+                start, end, DATASET.contentSha256(), DATASET.metadata(), prices);
+    }
+
+    private PricePoint point(LocalDate date) {
+        return new PricePoint(date, "100.0000000000", "100.0000000000", null);
     }
 
     private PythonApiException pythonFailure(int status, String code) {
