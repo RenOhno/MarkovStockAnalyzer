@@ -15,6 +15,10 @@ import com.example.markovstockanalyzer.exception.CalculationInvariantFailedExcep
 import com.example.markovstockanalyzer.exception.ConditionNotFoundException;
 import com.example.markovstockanalyzer.exception.PythonApiException;
 import com.example.markovstockanalyzer.exception.StockNotFoundException;
+import com.example.markovstockanalyzer.model.AnalysisResult;
+import com.example.markovstockanalyzer.model.PriceDataset;
+import com.example.markovstockanalyzer.repository.InMemoryAnalysisResultRepository;
+import com.example.markovstockanalyzer.repository.InMemoryPriceDatasetRepository;
 import com.example.markovstockanalyzer.repository.StockRepository;
 import com.example.markovstockanalyzer.validation.AnalysisResultValidator;
 import org.junit.jupiter.api.BeforeEach;
@@ -94,7 +98,7 @@ class AnalysisServiceTests {
         when(pythonClient.fetchPrices(any(FetchPricesRequest.class))).thenReturn(DATASET);
         when(pythonClient.analyze(any(AnalyzeInput.class))).thenReturn(CALCULATED);
 
-        CalculatedAnalysis result = service.analyze(CONDITION_ID, REQUEST_ID);
+        AnalysisExecutionResult result = service.analyze(CONDITION_ID, REQUEST_ID);
 
         ArgumentCaptor<FetchPricesRequest> fetch = ArgumentCaptor.forClass(FetchPricesRequest.class);
         ArgumentCaptor<AnalyzeInput> analyze = ArgumentCaptor.forClass(AnalyzeInput.class);
@@ -118,7 +122,28 @@ class AnalysisServiceTests {
         assertEquals(REQUEST_ID, analyze.getValue().requestId());
         assertEquals(fetch.getValue().requestId(), analyze.getValue().requestId());
         assertSame(DATASET, analyze.getValue().dataset());
-        assertSame(CALCULATED, result);
+        assertSame(CONDITION, result.condition());
+        assertSame(DATASET, result.dataset());
+        assertSame(CALCULATED, result.calculatedAnalysis());
+    }
+
+    @Test
+    void executionResultProvidesConditionDatasetAndAnalysisForCallerToSave() {
+        givenSavedConditionAndStock();
+        when(pythonClient.fetchPrices(any(FetchPricesRequest.class))).thenReturn(DATASET);
+        when(pythonClient.analyze(any(AnalyzeInput.class))).thenReturn(CALCULATED);
+
+        AnalysisExecutionResult execution = service.analyze(CONDITION_ID, REQUEST_ID);
+        InMemoryPriceDatasetRepository datasets = new InMemoryPriceDatasetRepository();
+        InMemoryAnalysisResultRepository results = new InMemoryAnalysisResultRepository();
+        PriceDataset dataset = datasets.save(execution.condition().stockId(), execution.dataset());
+        AnalysisResult result = results.save(execution.condition().id(), dataset.id(), execution.calculatedAnalysis());
+
+        verify(validator).validate(CALCULATED, "msa-core-v1");
+        assertEquals(CONDITION_ID, result.conditionId());
+        assertEquals(dataset.id(), result.datasetId());
+        assertEquals(DATASET, datasets.findById(result.datasetId()).orElseThrow().dataset());
+        assertEquals(CALCULATED, results.findById(result.id()).orElseThrow().calculatedAnalysis());
     }
 
     @Test

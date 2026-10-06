@@ -32,7 +32,7 @@ public class AnalysisService {
         this.resultValidator = resultValidator;
     }
 
-    public CalculatedAnalysis analyze(Long conditionId, String requestId) {
+    public AnalysisExecutionResult analyze(Long conditionId, String requestId) {
         ConditionResponse condition = conditionService.findById(conditionId);
         StockSummary stock = stockRepository.findAll().stream()
                 .filter(candidate -> candidate.id().equals(condition.stockId()))
@@ -48,6 +48,6 @@ public class AnalysisService {
         AnalyzeInput input = new AnalyzeInput(requestId, AnalysisCondition.from(condition), dataset);
         CalculatedAnalysis calculated = pythonAnalysisClient.analyze(input);
         resultValidator.validate(calculated, input.engineVersion());
-        return calculated;
+        return new AnalysisExecutionResult(condition, dataset, calculated);
     }
 }
