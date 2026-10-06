@@ -12,11 +12,11 @@ import java.time.Duration;
 public class RestClientConfig {
     @Bean
     RestClient pythonRestClient(
-            @Value("${python.api.base-url:http://127.0.0.1:8001}") String baseUrl
+            @Value("${python.api.base-url:http://127.0.0.1:8000}") String baseUrl
     ) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(Duration.ofSeconds(2));
-        requestFactory.setReadTimeout(Duration.ofSeconds(5));
+        requestFactory.setReadTimeout(Duration.ofSeconds(15));
         return RestClient.builder()
                 .baseUrl(baseUrl)
                 .requestFactory(requestFactory)
