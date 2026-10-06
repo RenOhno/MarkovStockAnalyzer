@@ -18,6 +18,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -74,6 +75,20 @@ class AnalysisResultWriterTests {
         verifyNoMoreInteractions(datasets, results);
         assertSame(savedAnalysis, result);
         assertSame(calculated, result.calculatedAnalysis());
+    }
+
+    @Test
+    void preservesReusedDatasetIdWithoutSavingAnotherDataset() {
+        AnalysisResult savedAnalysis = new AnalysisResult(1001L, CONDITION_ID, SAVED_DATASET_ID, calculated, Instant.now());
+        when(datasets.findById(SAVED_DATASET_ID)).thenReturn(Optional.of(savedDataset));
+        when(results.save(CONDITION_ID, SAVED_DATASET_ID, calculated)).thenReturn(savedAnalysis);
+
+        assertSame(savedAnalysis, writer.save(execution, SAVED_DATASET_ID));
+
+        InOrder order = inOrder(datasets, results);
+        order.verify(datasets).findById(SAVED_DATASET_ID);
+        order.verify(results).save(eq(CONDITION_ID), eq(SAVED_DATASET_ID), same(calculated));
+        verifyNoMoreInteractions(datasets, results);
     }
 
     @Test
