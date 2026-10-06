@@ -2,7 +2,9 @@ package com.example.markovstockanalyzer.client;
 
 import com.example.markovstockanalyzer.dto.request.AnalyzeInput;
 import com.example.markovstockanalyzer.dto.request.FetchPricesRequest;
+import com.example.markovstockanalyzer.dto.request.SeriesInput;
 import com.example.markovstockanalyzer.dto.response.CalculatedAnalysis;
+import com.example.markovstockanalyzer.dto.response.CalculatedSeries;
 import com.example.markovstockanalyzer.dto.response.PriceDatasetPayload;
 import com.example.markovstockanalyzer.dto.response.PythonHealthResponse;
 import com.example.markovstockanalyzer.exception.AnalysisServiceUnavailableException;
@@ -95,6 +97,31 @@ public class PythonAnalysisClient {
                     .body(input)
                     .retrieve()
                     .body(CalculatedAnalysis.class);
+        } catch (RestClientResponseException exception) {
+            ApiErrorResponse fallback = new ApiErrorResponse(
+                    "ANALYSIS_SERVICE_ERROR", "Python analysis service request failed",
+                    input.requestId(), Map.of()
+            );
+            throw new PythonApiException(
+                    exception.getStatusCode().value(), pythonError(exception, fallback), exception
+            );
+        } catch (RestClientException exception) {
+            throw new AnalysisServiceUnavailableException(exception);
+        }
+    }
+
+    public CalculatedSeries series(SeriesInput input) {
+        // Assumption: no series-specific deadline is defined in design section 15.4.
+        // Reuse the normal-analysis client: connect 2 seconds, response 5 seconds.
+        try {
+            return analyzeRestClient.post()
+                    .uri("/internal/v1/series")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .header("X-Internal-Token", internalApiToken)
+                    .header("X-Request-Id", input.requestId())
+                    .body(input)
+                    .retrieve()
+                    .body(CalculatedSeries.class);
         } catch (RestClientResponseException exception) {
             ApiErrorResponse fallback = new ApiErrorResponse(
                     "ANALYSIS_SERVICE_ERROR", "Python analysis service request failed",
