@@ -12,6 +12,7 @@ import com.example.markovstockanalyzer.dto.response.PythonHealthResponse;
 import com.example.markovstockanalyzer.exception.AnalysisServiceUnavailableException;
 import com.example.markovstockanalyzer.exception.ApiErrorResponse;
 import com.example.markovstockanalyzer.exception.PythonApiException;
+import com.example.markovstockanalyzer.exception.PythonTransportFailure;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,7 +22,6 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
-import java.net.SocketTimeoutException;
 import java.util.Map;
 
 @Component
@@ -89,12 +89,10 @@ public class PythonAnalysisClient {
                     exception
             );
         } catch (RestClientException exception) {
-            for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
-                if (cause instanceof SocketTimeoutException) {
-                    throw new PythonApiException(504, new ApiErrorResponse(
-                            "PROVIDER_TIMEOUT", "Price fetch timed out", request.requestId(), Map.of()
-                    ), exception);
-                }
+            if (PythonTransportFailure.isResponseTimeout(exception)) {
+                throw new PythonApiException(504, new ApiErrorResponse(
+                        "PROVIDER_TIMEOUT", "Price fetch timed out", request.requestId(), Map.of()
+                ), exception);
             }
             throw new AnalysisServiceUnavailableException(exception);
         }

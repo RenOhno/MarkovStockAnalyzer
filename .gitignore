@@ -219,3 +219,8 @@ __marimo__/
 
 # Frontend dependencies (the pinned browser bundle is committed in frontend/vendor).
 node_modules/
+.env.*
+!.env.example
+tests/e2e/artifacts/
+tests/e2e/playwright-report/
+tests/e2e/test-results/

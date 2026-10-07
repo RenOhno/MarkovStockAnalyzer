@@ -90,6 +90,7 @@
                 <filtering>false</filtering>
                 <includes>
                     <include>*.html</include>
+                    <include>favicon.svg</include>
                     <include>css/**</include>
                     <include>js/**</include>
                     <include>vendor/**</include>

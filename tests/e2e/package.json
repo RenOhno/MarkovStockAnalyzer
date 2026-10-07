@@ -1,0 +1,10 @@
+{
+  "name": "markov-stock-analyzer-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:integration": "node run.mjs"
+  },
+  "devDependencies": { "@playwright/test": "1.56.1" }
+}

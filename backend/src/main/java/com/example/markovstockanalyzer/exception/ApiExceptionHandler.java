@@ -13,8 +13,6 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.net.SocketTimeoutException;
-import java.net.http.HttpTimeoutException;
 import java.util.regex.Pattern;
 
 @RestControllerAdvice
@@ -122,10 +120,8 @@ public class ApiExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleUnavailable(
             AnalysisServiceUnavailableException exception, HttpServletRequest request
     ) {
-        for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
-            if (cause instanceof SocketTimeoutException || cause instanceof HttpTimeoutException) {
-                return error(504, "PROVIDER_TIMEOUT", "Analysis request timed out", request);
-            }
+        if (PythonTransportFailure.isResponseTimeout(exception)) {
+            return error(504, "PROVIDER_TIMEOUT", "Analysis request timed out", request);
         }
         return error(503, "ANALYSIS_SERVICE_UNAVAILABLE", "Python analysis service is unavailable", request);
     }

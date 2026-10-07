@@ -1,6 +1,11 @@
 spring:
   application:
     name: markov-stock-analyzer
+server:
+  address: ${APP_BIND_ADDRESS:127.0.0.1}
+python:
+  api:
+    base-url: ${PYTHON_API_BASE_URL:http://127.0.0.1:8000}
 ---
 # Default API/unit-test mode continues to use the existing in-memory repositories.
 spring:

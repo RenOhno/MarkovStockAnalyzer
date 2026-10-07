@@ -1,0 +1,12 @@
+# Explicit offline overlay. It never changes API contracts or numerical logic.
+services:
+  analysis:
+    environment:
+      ANALYSIS_PROVIDER: fixture
+      FIXTURE_PATH: /fixtures/prices.csv
+      FIXTURE_FETCH_DELAY_SECONDS: ${FIXTURE_FETCH_DELAY_SECONDS:-0}
+    volumes:
+      - ./tests/e2e/fixtures:/fixtures:ro
+networks:
+  compute:
+    internal: true

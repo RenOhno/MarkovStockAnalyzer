@@ -1,0 +1,79 @@
+services:
+  mysql:
+    # MySQL 8.4.11, pinned to the same distribution verified by the existing DB tests.
+    image: mysql:8.4@sha256:6ea90827b1100f8f2ae306a539f86d2c264a26ed435a2a9f75551dd5c3aeb242
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?Set MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER:?Set MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD}
+      TZ: UTC
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_0900_ai_ci", "--default-time-zone=+00:00"]
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks: [database]
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_PASSWORD\" mysql --host=127.0.0.1 --user=\"$$MYSQL_USER\" --database=\"$$MYSQL_DATABASE\" --execute='SELECT 1' --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
+  analysis:
+    image: markov-stock-analyzer-analysis:local
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: analysis/Dockerfile
+      target: runtime
+    environment:
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?Set INTERNAL_API_TOKEN}
+      TZ: UTC
+    networks: [compute]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,json,urllib.request; r=urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:8000/internal/v1/health',headers={'X-Internal-Token':os.environ['INTERNAL_API_TOKEN']}),timeout=3); assert json.load(r)['status']=='UP'"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    restart: unless-stopped
+  backend:
+    image: markov-stock-analyzer-backend:local
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      SPRING_PROFILES_ACTIVE: mysql
+      APP_BIND_ADDRESS: 0.0.0.0
+      DB_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE}?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
+      DB_USERNAME: ${MYSQL_USER}
+      DB_PASSWORD: ${MYSQL_PASSWORD}
+      PYTHON_API_BASE_URL: http://analysis:8000
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN}
+      MARKET_CALENDAR_VERSION: ${MARKET_CALENDAR_VERSION:-4.13.2}
+      TZ: UTC
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=70
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-8080}:8080"
+    networks: [database, compute, web]
+    depends_on:
+      mysql: { condition: service_healthy }
+      analysis: { condition: service_healthy }
+    healthcheck:
+      # /api/stocks verifies HTTP, JPA connectivity, migration and the public read path.
+      test: ["CMD", "curl", "--fail", "--silent", "--max-time", "4", "http://127.0.0.1:8080/api/stocks"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+    restart: unless-stopped
+volumes:
+  mysql-data:
+networks:
+  database:
+    internal: true
+  compute:
+    # Production YFinance needs egress; neither analysis nor mysql publishes a host port.
+  web:
+    # Only backend joins this network, so its loopback binding also works in offline mode.
