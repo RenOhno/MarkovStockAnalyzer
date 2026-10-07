@@ -2,10 +2,12 @@ package com.example.markovstockanalyzer.repository;
 
 import com.example.markovstockanalyzer.dto.response.StockSummary;
 import org.springframework.stereotype.Repository;
+import org.springframework.context.annotation.Profile;
 
 import java.util.List;
 
 @Repository
+@Profile("!mysql")
 public class InMemoryStockRepository implements StockRepository {
     private final List<StockSummary> stocks = List.of(
             new StockSummary("9001", "TEST", "Synthetic Test Stock", "XTKS", "JPY", "Asia/Tokyo"),

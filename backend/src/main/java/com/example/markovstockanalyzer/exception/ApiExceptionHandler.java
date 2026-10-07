@@ -19,6 +19,11 @@ import java.util.regex.Pattern;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+    @ExceptionHandler({org.springframework.dao.DataAccessException.class,
+            org.springframework.transaction.TransactionException.class})
+    public ResponseEntity<ApiErrorResponse> handleDatabase(RuntimeException exception, HttpServletRequest request) {
+        return error(503, "PERSISTENCE_SERVICE_UNAVAILABLE", "Persistence service is unavailable", request);
+    }
     @Value("${INTERNAL_API_TOKEN:}")
     private String internalApiToken = "";
 

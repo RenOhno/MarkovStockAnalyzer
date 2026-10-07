@@ -3,8 +3,10 @@ package com.example.markovstockanalyzer.service;
 import com.example.markovstockanalyzer.model.BacktestResult;
 import com.example.markovstockanalyzer.repository.BacktestResultRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.context.annotation.Profile;
 
 @Service
+@Profile("!mysql")
 public class BacktestResultWriter {
     private final BacktestResultRepository results;
     public BacktestResultWriter(BacktestResultRepository results) { this.results = results; }

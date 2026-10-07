@@ -3,6 +3,7 @@ package com.example.markovstockanalyzer.repository;
 import com.example.markovstockanalyzer.dto.response.PriceDatasetPayload;
 import com.example.markovstockanalyzer.model.PriceDataset;
 import org.springframework.stereotype.Repository;
+import org.springframework.context.annotation.Profile;
 
 import java.time.Instant;
 import java.util.Objects;
@@ -11,6 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 @Repository
+@Profile("!mysql")
 public class InMemoryPriceDatasetRepository implements PriceDatasetRepository {
     private final AtomicLong sequence = new AtomicLong();
     private final ConcurrentHashMap<Long, PriceDataset> datasets = new ConcurrentHashMap<>();

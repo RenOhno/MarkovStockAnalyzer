@@ -3,6 +3,7 @@ package com.example.markovstockanalyzer.repository;
 import com.example.markovstockanalyzer.dto.request.CreateConditionRequest;
 import com.example.markovstockanalyzer.dto.response.ConditionResponse;
 import org.springframework.stereotype.Repository;
+import org.springframework.context.annotation.Profile;
 
 import java.time.Instant;
 import java.util.concurrent.ConcurrentHashMap;
@@ -11,6 +12,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
+@Profile("!mysql")
 public class InMemoryConditionRepository implements ConditionRepository {
     private final AtomicLong sequence = new AtomicLong(100);
     private final ConcurrentHashMap<Long, ConditionResponse> conditions = new ConcurrentHashMap<>();

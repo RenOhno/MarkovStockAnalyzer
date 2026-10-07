@@ -3,6 +3,7 @@ package com.example.markovstockanalyzer.repository;
 import com.example.markovstockanalyzer.dto.response.CalculatedAnalysis;
 import com.example.markovstockanalyzer.model.AnalysisResult;
 import org.springframework.stereotype.Repository;
+import org.springframework.context.annotation.Profile;
 
 import java.time.Instant;
 import java.util.Objects;
@@ -12,6 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 @Repository
+@Profile("!mysql")
 public class InMemoryAnalysisResultRepository implements AnalysisResultRepository {
     private final AtomicLong sequence = new AtomicLong();
     private final ConcurrentHashMap<Long, AnalysisResult> results = new ConcurrentHashMap<>();

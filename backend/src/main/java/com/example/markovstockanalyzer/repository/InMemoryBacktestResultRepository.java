@@ -4,6 +4,7 @@ import com.example.markovstockanalyzer.dto.request.BacktestEvaluation;
 import com.example.markovstockanalyzer.dto.response.CalculatedBacktest;
 import com.example.markovstockanalyzer.model.BacktestResult;
 import org.springframework.stereotype.Repository;
+import org.springframework.context.annotation.Profile;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.List;
@@ -11,6 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 @Repository
+@Profile("!mysql")
 public class InMemoryBacktestResultRepository implements BacktestResultRepository {
     private final AtomicLong sequence = new AtomicLong();
     private final ConcurrentHashMap<Long, BacktestResult> results = new ConcurrentHashMap<>();

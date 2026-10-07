@@ -16,6 +16,7 @@ import com.example.markovstockanalyzer.repository.PriceDatasetRepository;
 import com.example.markovstockanalyzer.repository.StockRepository;
 import com.example.markovstockanalyzer.validation.AnalysisResultValidator;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
 public class AnalysisService {
@@ -24,6 +25,12 @@ public class AnalysisService {
     private final PriceDatasetRepository priceDatasetRepository;
     private final PythonAnalysisClient pythonAnalysisClient;
     private final AnalysisResultValidator resultValidator;
+    private PriceDatasetService datasetService;
+
+    @Autowired(required = false)
+    public void setDatasetService(PriceDatasetService datasetService) {
+        this.datasetService = datasetService;
+    }
 
     public AnalysisService(
             ConditionService conditionService,
@@ -45,6 +52,13 @@ public class AnalysisService {
 
     public AnalysisExecutionResult analyze(Long conditionId, Long datasetId, String requestId) {
         ConditionResponse condition = conditionService.findById(conditionId);
+        if (datasetService != null) {
+            PriceDataset saved = datasetService.resolve(condition, datasetId, requestId);
+            AnalyzeInput input = new AnalyzeInput(requestId, AnalysisCondition.from(condition), saved.dataset());
+            CalculatedAnalysis calculated = pythonAnalysisClient.analyze(input);
+            resultValidator.validate(calculated, input.engineVersion());
+            return new AnalysisExecutionResult(condition, saved.dataset(), calculated, saved.id());
+        }
         PriceDatasetPayload dataset = datasetId == null
                 ? fetchDataset(condition, requestId)
                 : reuseDataset(condition, datasetId);
