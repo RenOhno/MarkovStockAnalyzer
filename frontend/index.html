@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="ja">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="価格の動きを3つの状態で捉え、マルコフ連鎖の推定根拠と時系列検証を確認する研究用アプリ。"><title>Markov Stock Analyzer | 研究用株価分析</title><link rel="stylesheet" href="css/style.css"></head>
+<body>
+<a class="skip-link" href="#main">本文へ移動</a>
+<header class="site-header"><div class="header-inner"><a class="brand" href="index.html"><span class="brand-mark" aria-hidden="true">M</span><span>Markov Stock Analyzer<small>STATE · TRANSITION · VALIDATION</small></span></a><nav aria-label="メインナビゲーション"><a href="index.html" aria-current="page">トップ</a><a href="analysis.html">分析</a><a href="backtest.html">バックテスト</a><a href="history.html">履歴</a></nav></div></header>
+<main id="main">
+  <section class="hero" aria-labelledby="hero-heading"><div><p class="eyebrow">RESEARCH / MARKOV CHAINS</p><h1 id="hero-heading">価格の動きを、<br>状態のつながりから観察する。</h1><p class="lead">日々の価格変化を「上昇・横ばい・下落」に分け、状態がどう移り変わるかを調べます。予測の数値だけでなく、その根拠と過去データでの検証を確認できる研究用アプリです。</p><div class="actions"><a class="button" href="analysis.html">分析を始める <span aria-hidden="true">&nbsp;→</span></a><a class="button secondary" href="history.html">履歴を見る</a></div></div><aside class="hero-figure" aria-label="状態分類の模式図"><p class="eyebrow">THREE STATES, ONE OBSERVATION</p><h2>昨日から今日へ。<br>変化を3つの状態で捉える。</h2><div class="state-diagram"><div class="diagram-state"><strong>UP</strong><span>上昇</span></div><span aria-hidden="true">↔</span><div class="diagram-state"><strong>FLAT</strong><span>横ばい</span></div><span aria-hidden="true">↔</span><div class="diagram-state"><strong>DOWN</strong><span>下落</span></div></div><p class="figure-note">状態遷移の考え方を示す模式図です。実データや予測値は含みません。</p></aside></section>
+  <section aria-labelledby="flow-heading"><p class="eyebrow">HOW IT WORKS</p><h2 id="flow-heading">条件を決め、根拠を確認し、過去で検証する。</h2><div class="flow"><article><span class="step">01 / DEFINE</span><h3>分析条件を決める</h3><p>銘柄・期間・変化率の閾値を指定します。保存した条件は、そのまま再利用できます。</p></article><article><span class="step">02 / OBSERVE</span><h3>状態と遷移を見る</h3><p>状態間の遷移回数、推定した確率、価格系列を並べて、計算の根拠を確認します。</p></article><article><span class="step">03 / VALIDATE</span><h3>過去の各時点で検証する</h3><p>その時点より前のデータだけで、翌営業日の状態を評価します。予測できない日も明示します。</p></article></div></section>
+  <aside class="research-note"><h2>研究・教育目的のツールです</h2><p>投資助言や売買の推奨は行いません。確率は指定した過去データとモデルの仮定に基づく推定であり、将来の値動きや売買利益を保証しません。観測の少ない状態は、無理に確率を補わず「推定不可」として表示します。</p></aside>
+</main>
+<footer class="site-footer"><span>Markov Stock Analyzer · Research application</span><span>投資助言ではありません。</span></footer>
+</body></html>

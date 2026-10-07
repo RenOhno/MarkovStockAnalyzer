@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Frontend dependencies (the pinned browser bundle is committed in frontend/vendor).
+node_modules/

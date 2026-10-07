@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ja">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>分析 | Markov Stock Analyzer</title><link rel="stylesheet" href="css/style.css"></head>
+<body>
+<a class="skip-link" href="#main">本文へ移動</a>
+<header class="site-header"><div class="header-inner"><a class="brand" href="index.html"><span class="brand-mark" aria-hidden="true">M</span><span>Markov Stock Analyzer<small>STATE · TRANSITION · VALIDATION</small></span></a><nav aria-label="メインナビゲーション"><a href="index.html">トップ</a><a href="analysis.html" aria-current="page">分析</a><a href="backtest.html">バックテスト</a><a href="history.html">履歴</a></nav></div></header>
+<main id="main">
+  <div class="page-header"><p class="eyebrow">01 / ANALYSIS</p><h1>状態の変化を分析する</h1><p>提供元の調整後終値を使い、上昇・横ばい・下落の遷移を確認します。確率と、その根拠となる観測数を並べて表示します。</p></div>
+  <noscript><p class="notice error">分析の入力・表示にはJavaScriptを有効にしてください。</p></noscript>
+  <div id="page-status" class="status" data-state="idle" role="status" aria-live="polite" aria-atomic="true"><span class="status-label">準備中</span><span>条件を読み込んでいます。</span></div>
+  <div id="page-error" aria-live="assertive" hidden></div>
+  <section id="input-panel" class="panel" aria-labelledby="input-heading"><div class="panel-heading"><h2 id="input-heading"><span class="section-number">01</span>分析条件</h2><span class="badge">3状態 / 全期間 / MLE</span></div>
+    <form id="analysis-form"><fieldset id="analysis-fields" disabled><div class="form-grid">
+      <div class="field"><label for="stock">銘柄</label><select id="stock" name="stockId" required><option value="">読込中</option></select></div>
+      <div class="field"><label for="saved-condition">保存済みCondition</label><select id="saved-condition"><option value="">新しい条件</option></select></div>
+      <div class="field"><label for="start-date">開始日</label><input id="start-date" name="startDate" type="date" required></div>
+      <div class="field"><label for="end-date">終了日</label><input id="end-date" name="endDate" type="date" required></div>
+      <div class="field"><label for="lower-threshold">下側閾値（%）</label><div class="input-unit"><input id="lower-threshold" name="lowerThreshold" type="number" value="-0.5" min="-100" max="0" step="any" required aria-describedby="threshold-help"><span aria-hidden="true">%</span></div></div>
+      <div class="field"><label for="upper-threshold">上側閾値（%）</label><div class="input-unit"><input id="upper-threshold" name="upperThreshold" type="number" value="0.5" min="0" max="100" step="any" required aria-describedby="threshold-help"><span aria-hidden="true">%</span></div></div>
+      <p id="threshold-help" class="help span-2">初期値は−0.5%／+0.5%。閾値の間を「横ばい」とします。境界の分類はサーバーの計算結果を使用します。対象期間は最大5年です。</p>
+      <div class="field"><span class="field-label" id="state-count-label">状態数（固定）</span><div class="fixed-value" aria-labelledby="state-count-label">3 · UP / FLAT / DOWN</div></div>
+      <div class="field"><label for="condition-name">条件名</label><input id="condition-name" name="name" maxlength="100" required placeholder="例：トヨタ・1年・±0.5%"></div>
+    </div><p id="condition-hint" class="help">新しい条件として保存した後、分析を実行します。</p><div class="actions"><button class="button" id="run-analysis" type="submit">条件を保存して分析</button><button class="button secondary" id="duplicate-condition" type="button" disabled>条件を複製</button></div></fieldset></form>
+  </section>
+  <div id="result" hidden>
+    <section class="panel" aria-labelledby="result-heading"><div class="panel-heading"><div><p class="eyebrow">ANALYSIS RESULT</p><h2 id="result-heading">分析結果</h2></div><span id="result-id" class="badge"></span></div>
+      <dl id="result-stats" class="stats"></dl><div id="result-context" class="result-context"></div><div id="warnings"></div>
+    </section>
+    <section class="panel" aria-labelledby="forecast-heading"><h2 id="forecast-heading"><span class="section-number">02</span>営業日後の状態確率</h2><p class="help">将来の価格や売買利益ではなく、各状態になる確率の推定です。</p><div id="forecasts"></div></section>
+    <div class="two-columns result-section"><section class="panel" aria-labelledby="counts-heading"><h2 id="counts-heading">遷移回数</h2><p class="help">推定の根拠となる観測回数。</p><div id="transition-counts"></div></section><section class="panel" aria-labelledby="matrix-heading"><h2 id="matrix-heading">遷移確率</h2><p class="help">未推定のセルは確率を補完しません。</p><div id="transition-matrix"></div></section></div>
+    <section class="panel" aria-labelledby="series-heading"><div class="panel-heading"><h2 id="series-heading"><span class="section-number">03</span>保存データの価格・状態</h2><span id="series-basis" class="badge"></span></div><p id="series-status" class="help" role="status" aria-live="polite"></p><div id="series-error" aria-live="assertive" hidden></div><div id="series-content" hidden>
+      <h3>提供元調整後終値</h3><div class="chart-wrap"><canvas id="price-chart" role="img" aria-label="提供元調整後終値の推移。各日の価格は下の表で確認できます。">下の表に各日の価格を表示します。</canvas></div>
+      <h3>日次リターンと状態</h3><div class="chart-wrap small"><canvas id="return-chart" role="img" aria-label="日次リターンの棒グラフ。状態とリターンは下の表で確認できます。">下の表に日次リターンと状態を表示します。</canvas></div>
+      <div class="state-legend"><span class="badge state-up">上昇 UP</span><span class="badge state-flat">横ばい FLAT</span><span class="badge state-down">下落 DOWN</span></div><p class="help">棒の高さはリターン、色はAPIが返した状態です。状態は表にも記載します。</p><div id="series-table"></div><div id="series-paging" class="paging" role="group" aria-label="価格系列のページ"></div>
+    </div></section>
+    <section class="panel"><details><summary>データ出典と計算版</summary><div id="provenance"></div></details></section>
+    <div class="actions result-actions"><a id="backtest-link" class="button" href="backtest.html">この条件とデータでバックテスト →</a><a id="copy-link" class="button secondary" href="analysis.html">条件を複製</a><a class="button secondary" href="history.html">履歴を見る</a><a class="button secondary" href="analysis.html">新しい分析</a></div>
+    <p class="help">提供元の調整後終値は分割・配当等の調整を含み、単純な終値の騰落とは異なる場合があります。結果は保存されたデータ版に基づきます。</p>
+  </div>
+</main>
+<footer class="site-footer"><span>Markov Stock Analyzer · Research application</span><span>本結果は投資助言ではなく、将来の値動きを保証しません。</span></footer>
+<script src="vendor/chart.umd.min.js"></script><script type="module" src="js/pages/analysis.js"></script>
+</body></html>
