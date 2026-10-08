@@ -1,8 +1,8 @@
-# Persistence foundation (STEP 8A)
+# Persistence profiles
 
 The default profile starts the existing in-memory API without a database. The
-`mysql` profile enables the separate JPA repositories and Flyway infrastructure;
-API services still use their existing in-memory repositories until STEP 8B.
+`mysql` profile selects JPA adapters for the existing repository interfaces and
+enables Flyway. Compose selects `mysql`; services and HTTP contracts are shared.
 
 Set `DB_URL`, `DB_USERNAME`, and `DB_PASSWORD` in the process environment, then run:
 
@@ -16,18 +16,20 @@ only the same two development stocks as the in-memory repository. No price data
 is seeded.
 
 JSON columns use `@JdbcTypeCode(SqlTypes.JSON)` with raw JSON strings. The database
-validates JSON syntax; the next-step adapter must reuse the existing business
-validation and serialize JSON deliberately. HTTP DTOs are not entities.
+validates JSON syntax; adapters reuse business validation and deliberately
+serialize stored snapshots. HTTP DTOs are not entities.
 
 Parent aggregates expose persist cascades for dataset/prices, analysis/nine
 transitions, and backtest/predictions. Cascade delete and orphan removal are not
 enabled; foreign keys protect saved history.
 
 `MySqlPersistenceTests` uses an ephemeral MySQL 8.4 Testcontainer. It runs with
-ordinary `.\mvnw.cmd test`; if Docker is unavailable, JUnit reports these tests as
-skipped via Testcontainers' `disabledWithoutDocker` condition. With Docker
-available, migration, mapping, constraint, JSON, and transaction failures fail
-the tests. No H2 substitution is used.
+ordinary `.\mvnw.cmd verify`, together with `MySqlRepositoryAdapterTests`.
+Docker is required. The foundation class retains its original
+`disabledWithoutDocker=true` behavior; the adapter class requires Docker and
+fails if it is unavailable. CI additionally rejects every skipped report, so a
+missing Docker environment cannot satisfy the database gate. Migration, mapping,
+constraint, JSON, and transaction failures fail the tests. No H2 is used.
 
 To rerun DB tests after enabling Docker:
 
@@ -35,5 +37,6 @@ To rerun DB tests after enabling Docker:
 .\mvnw.cmd test -Dtest=MySqlPersistenceTests
 ```
 
-A build with DB tests skipped confirms Java/unit-test readiness, not successful
-MySQL verification. Run the real DB tests before integrating adapters in STEP 8B.
+CI rejects any skipped Java test. Separate transactional writers atomically save
+dataset/prices, analysis/nine transitions and backtest/predictions. Python calls
+occur before those transactions.

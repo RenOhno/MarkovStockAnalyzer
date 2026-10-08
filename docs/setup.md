@@ -12,6 +12,17 @@ not implement trading, profit evaluation, login or cloud deployment.
 
 ## Configure and start
 
+Clone the repository and enter it:
+
+```powershell
+git clone https://github.com/RenOhno/MarkovStockAnalyzer.git
+cd MarkovStockAnalyzer
+```
+
+The GitHub clone was verified in an isolated destination in STEP 11. The
+remote clone contains committed remote files; local uncommitted changes are
+not transferred by clone. See the verification record for the publication gate.
+
 From the repository root, copy `.env.example` to `.env` locally:
 
 ```powershell
@@ -23,6 +34,23 @@ Edit `.env`. Supply three independent random secrets for `MYSQL_PASSWORD`,
 Generate them with a trusted local password generator. Never commit `.env` or
 paste secrets into logs/issues. `MYSQL_DATABASE` and `MYSQL_USER` identify the
 application account, not the MySQL root account.
+
+Use an independent value for each secret. For example, this PowerShell command
+uses the platform cryptographic generator and copies a value into a variable;
+insert it locally into the intended `.env` key, without publishing it:
+
+```powershell
+$secretBytes = New-Object byte[] 32
+$secretGenerator = [Security.Cryptography.RandomNumberGenerator]::Create()
+$secretGenerator.GetBytes($secretBytes)
+$secretGenerator.Dispose()
+$localSecret = [Convert]::ToBase64String($secretBytes)
+```
+
+Repeat for each key. The same generator was used during the verified startup.
+`.env` is ignored by Git and excluded from image builds. Do not run `docker
+compose config` or `docker inspect` into public logs: expanded configuration and
+container environments contain credentials.
 
 `MARKET_CALENDAR_VERSION` must match `exchange-calendars` in `analysis/uv.lock`
 (currently `4.13.2`). Updating that dependency also requires updating this value.
@@ -36,6 +64,13 @@ Compose waits for authenticated FastAPI health and an application-user MySQL
 query before starting Spring Boot. Spring Boot then applies Flyway migrations,
 validates the JPA mappings and reads the seeded stocks. Backend health is
 `GET /api/stocks`, which exercises the public HTTP/DB read path.
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8080/api/stocks
+```
+
+If `docker compose ps` is initially still `starting`, allow the health checks to
+complete. Inspect the bounded service logs below if a container becomes unhealthy.
 
 Open **http://127.0.0.1:8080/**. The four pages are `/index.html`,
 `/analysis.html`, `/backtest.html`, `/history.html`. `GET /api/stocks` should
@@ -88,7 +123,7 @@ backtest days. Its provider is displayed as `FIXTURE`, not YFinance.
 
 ```powershell
 cd tests/e2e
-npm ci
+npm ci --ignore-scripts
 npx playwright install chromium
 npm run test:integration
 ```
@@ -130,11 +165,13 @@ backtest result and history. They are review artifacts, not pixel comparisons.
 
 ```powershell
 cd analysis
+uv sync --locked
 uv run pytest
+uv run python -m compileall -q app tests
 cd ../backend
-.\mvnw.cmd test
+.\mvnw.cmd verify
 cd ../frontend
-npm ci
+npm ci --ignore-scripts
 npm test
 ```
 
@@ -144,9 +181,54 @@ run in their dedicated Docker build target without installing host Python/uv:
 
 ```powershell
 docker build -f analysis/Dockerfile --target test -t markov-stock-analyzer-analysis-tests:local .
-docker run --rm markov-stock-analyzer-analysis-tests:local uv run --frozen pytest
+docker run --rm --network none markov-stock-analyzer-analysis-tests:local uv sync --locked
+docker run --rm --network none markov-stock-analyzer-analysis-tests:local uv run pytest --cov=app/core --cov-report=term --cov-fail-under=90
+docker run --rm --network none markov-stock-analyzer-analysis-tests:local uv run python -m compileall -q app tests
 ```
 
 The executable schema remains exclusively in
 `backend/src/main/resources/db/migration/`. No schema copy or redesign is part
 of this integration setup.
+
+## Manual real-provider verification
+
+This is optional, explicit, and never a CI step. Start the normal or offline
+stack so the registered stock catalog is available. With Node.js 22 on PATH:
+
+```powershell
+node scripts/manual-yfinance-check.mjs --run-once
+```
+
+The default catalog URL is `http://127.0.0.1:8081`; for a normal deployment set
+`MANUAL_BASE_URL` to `http://127.0.0.1:8080` in the process environment. The
+script uses the Python test image above, makes one actual YFinanceProvider call
+for registered `7203.T`, then calls the real internal fetch/analyze routes. It
+does not use the fixture provider or Java persistence. The dataset remains in
+memory in a disposable container; only shape/count/status summaries are printed.
+No real prices, provider cookies or secrets are mounted back onto the host.
+
+Provider timeout is 5 seconds per download, the FastAPI fetch deadline is 12
+seconds, and the manual process has a 60-second outer limit. A failed provider
+check does not retry. The STEP 11 result is recorded without prices in
+[release readiness](release-readiness.md).
+
+## Safety and verification scope
+
+Only loopback hosts and same-origin browser JSON POSTs are allowed. CLI clients
+without Origin may send JSON. Requests over 5MiB are rejected before MVC,
+including bodies without Content-Length. Errors carry a requestId and safe
+public messages; credentials, SQL diagnostics and internal paths are not API fields.
+
+Keep real price CSV/JSON under ignored `data/` or `exports/`, and DB dumps under
+`backups/` or `db-dumps/`. The committed CSV fixtures are artificial. Only Flyway
+migration SQL is tracked. Run `node scripts/audit-repository.mjs` to check current
+tracked/candidate files and ignore rules; this is not a complete historical secret
+scanner. E2E checks its generated project credentials against artifact bytes
+and decompressed trace members before declaring success.
+
+CI runs on push/PR with read-only contents permission, pinned Action SHAs and
+separate Python/Java/frontend/E2E jobs. It does not fetch market data. GitHub
+execution and a genuinely separate third-party PC remain unverified until the
+owner publishes the changes and someone follows these steps there. This task
+verified clone, new Compose database startup, health, tests, and volume retention
+on the development PC. WSL2 prerequisite installation itself was not repeated.

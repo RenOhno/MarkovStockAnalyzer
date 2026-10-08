@@ -13,3 +13,8 @@
 **/playwright-report
 tests/e2e/artifacts
 data
+exports
+backups
+**/db-dumps
+**/*.dump
+**/*.sql.gz

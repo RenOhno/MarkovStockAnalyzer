@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: analysis
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          version: '0.9.2'
+          python-version: '3.12.12'
+          enable-cache: true
+          cache-dependency-glob: analysis/uv.lock
+      - run: uv sync --locked
+      # Includes frozen OpenAPI/HTTP contract checks; providers are fixtures/mocks only.
+      - run: uv run pytest --cov=app/core --cov-report=term --cov-fail-under=90
+      - run: uv run python -m compileall -q app tests
+      # No lint tool is configured in pyproject.toml; compileall and the security job run now.
+
+  java-mysql:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+      - run: docker info > /dev/null
+      - run: chmod +x mvnw && ./mvnw --batch-mode --no-transfer-progress verify
+        working-directory: backend
+      # Docker absence or any skipped MySQL/unit test must not masquerade as success.
+      - run: node scripts/check-java-reports.mjs
+
+  frontend-security:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: node scripts/audit-repository.mjs
+      - run: npm ci --ignore-scripts
+        working-directory: frontend
+      - run: npm test
+        working-directory: frontend
+
+  offline-e2e:
+    runs-on: ubuntu-24.04
+    needs: [python-contract, java-mysql, frontend-security]
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: tests/e2e/package-lock.json
+      - run: npm ci --ignore-scripts
+        working-directory: tests/e2e
+      - run: npx playwright install --with-deps chromium
+        working-directory: tests/e2e
+      # Normal-provider startup is health-only. All prices/calculations use the offline overlay.
+      - run: npm run test:integration
+        working-directory: tests/e2e
+      - name: Stop isolated project, retain volume
+        if: always()
+        run: node run.mjs --stop
+        working-directory: tests/e2e
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: success()
+        with:
+          name: offline-e2e-evidence
+          retention-days: 7
+          # Do not upload env, container inspections, service logs or failed unsanitized traces.
+          path: |
+            tests/e2e/artifacts/screenshots/*.png
+            tests/e2e/artifacts/results.json
+            tests/e2e/artifacts/run-summary.json

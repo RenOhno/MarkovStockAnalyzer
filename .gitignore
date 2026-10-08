@@ -224,3 +224,15 @@ node_modules/
 tests/e2e/artifacts/
 tests/e2e/playwright-report/
 tests/e2e/test-results/
+
+# Private local data, database exports and credentials. Synthetic test fixtures stay tracked.
+/data/
+/exports/
+/backups/
+**/db-dumps/
+*.dump
+*.sql
+*.sql.gz
+!backend/src/main/resources/db/migration/*.sql
+*.pem
+*.key

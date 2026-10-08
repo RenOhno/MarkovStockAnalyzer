@@ -214,6 +214,33 @@ test('L: browser 35-second POST timeout aborts waiting, blocks duplicate submit 
   await page.clock.fastForward(70_000); expect(attempts).toBe(1);
   await page.unrouteAll({ behavior: 'ignoreErrors' });
 });
+test('M: stopped MySQL returns safe public 503 and recovers without replacing saved results', async ({ request }) => {
+  compose(['stop', 'mysql']);
+  try {
+    const response = await request.get(`/api/analysis/${savedAnalysis.id}`, { timeout: 45_000 });
+    expect(response.status()).toBe(503);
+    const body = await response.json();
+    expect(body.code).toBe('PERSISTENCE_SERVICE_UNAVAILABLE'); expect(body.requestId).toBeTruthy();
+    expect(body.details).toEqual({});
+    expect(JSON.stringify(body)).not.toMatch(/jdbc:|SELECT |SQLException|password|stackTrace|\/app\//i);
+  } finally {
+    compose(['start', 'mysql']); compose(['up', '-d', '--wait', '--wait-timeout', '120']); await waitReady();
+  }
+  expect(await (await request.get(`/api/analysis/${savedAnalysis.id}`)).json()).toEqual(savedAnalysis);
+});
+test('N: public JSON boundary rejects foreign origins, non-JSON and oversized bodies before saving', async ({ request }) => {
+  const before = await (await request.get('/api/conditions')).json();
+  for (const [options, status, code] of [
+    [{ headers: { Origin: 'http://attacker.example' }, data: { conditionId: Number(savedAnalysis.conditionId) } }, 403, 'INVALID_ORIGIN'],
+    [{ headers: { 'Content-Type': 'text/plain' }, data: '{}' }, 415, 'UNSUPPORTED_MEDIA_TYPE'],
+    [{ headers: { 'Content-Type': 'application/json' }, data: ' '.repeat(5 * 1024 * 1024 + 1) }, 413, 'PAYLOAD_TOO_LARGE']
+  ]) {
+    const response = await request.post('/api/conditions', options);
+    expect(response.status()).toBe(status); const body = await response.json();
+    expect(body.code).toBe(code); expect(body.requestId).toBeTruthy(); expect(body.details).toEqual({});
+  }
+  expect(await (await request.get('/api/conditions')).json()).toEqual(before);
+});
 test.afterAll(async () => { await writeFile(new URL('./artifacts/saved-identities.json', import.meta.url), JSON.stringify({
   analysisId: savedAnalysis?.id, partialId: savedPartial?.id, backtestId: savedBacktest?.id,
   conditionId: savedAnalysis?.conditionId, datasetId: savedAnalysis?.datasetId, health: health()

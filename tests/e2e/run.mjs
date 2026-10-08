@@ -3,6 +3,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { compose, health, root, waitReady } from './compose-control.mjs';
+import { assertArtifactsSafe } from './artifact-safety.mjs';
 
 const artifacts = new URL('./artifacts/', import.meta.url);
 await mkdir(artifacts, { recursive: true });
@@ -64,12 +65,15 @@ try {
   const result = spawnSync(process.execPath, [cli, 'test'], { cwd: join(root, 'tests/e2e'), env, stdio: 'inherit', timeout: 1_800_000 });
   summary.exitCode = result.status; summary.finalHealth = health(env); summary.finishedAt = new Date().toISOString();
   await writeFile(new URL('run-summary.json', artifacts), JSON.stringify(summary, null, 2));
+  await assertArtifactsSafe(artifacts, env);
   console.log(`E2E deployment: ${summary.baseURL} (${summary.project}); secrets exist only in process/container environments.`);
   if (result.error) throw result.error;
   process.exitCode = result.status ?? 1;
 } catch (error) {
-  summary.error = error.message; summary.finishedAt = new Date().toISOString();
+  // Child-process diagnostics can contain environment values; never serialize them into reports.
+  summary.error = 'Integration run failed; inspect the isolated project locally.'; summary.finishedAt = new Date().toISOString();
   await writeFile(new URL('run-summary.json', artifacts), JSON.stringify(summary, null, 2));
+  await assertArtifactsSafe(artifacts, env);
   console.error('Integration run failed; inspect service health/logs for the isolated project.');
   process.exitCode = 1;
 }
