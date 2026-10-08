@@ -1,8 +1,9 @@
 # STEP 11 verification record
 
 Verified on 2026-10-07–08, Windows / Docker Desktop Linux containers. This records
-local evidence, not a claim that GitHub CI or an unrelated person's PC has run.
-No commit, push, release tag or cloud deployment was performed.
+completed local verification and successful GitHub Actions CI on the main branch.
+The reviewed changes have been committed and pushed. No release tag or cloud
+deployment has been performed; unrelated third-party PC setup remains unverified.
 
 ## Regression results
 
@@ -17,7 +18,7 @@ No commit, push, release tag or cloud deployment was performed.
 | Compose | PASS | Fresh normal-provider startup without market fetch; fresh offline deployment; all three healthy, only backend loopback published |
 | Git/data safety | PASS for current files | Ignore probes, known credential signatures/local credential values, only artificial CSV and canonical Flyway SQL tracked |
 | E2E artifact safety | PASS | Project credential byte scan, including decompressed ZIP members when present; synthetic screenshots visually reviewed |
-| GitHub Actions execution | NOT VERIFIED | Four jobs implemented with pinned Action SHAs; not pushed under this task's instruction |
+| GitHub Actions execution | PASS | main branch; `python-contract`, `java-mysql`, `frontend-security`, `offline-e2e` all succeeded; Workflow Status: Success |
 
 Python ran inside its disposable Docker test image because the host's existing
 Python venv references an unavailable base interpreter. This is an environment
@@ -89,11 +90,11 @@ point-in-time correctness or redistribution permission.
 
 ## Publication boundary / remaining work
 
-The local MVP is verified. Before claiming the final acceptance gate is fully
-met, the owner must publish the reviewed changes, obtain a successful GitHub CI
-run and have a third party reproduce the setup. This task deliberately does
-not publish or commit them. Current-file scanning is not a full historical
-secret audit or a guarantee that all possible secret formats are detected.
+The local MVP is verified. The reviewed changes have been published, and GitHub
+Actions CI has succeeded on the main branch. The remaining final acceptance
+check is for an unrelated third party to reproduce the README/setup procedures.
+Current-file scanning is not a full historical secret audit or a guarantee that
+all possible secret formats are detected.
 
 Internet service deployment remains outside scope: authentication, ownership,
 TLS, abuse controls, separated migration/runtime DB permissions and market-data
